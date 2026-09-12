@@ -64,15 +64,49 @@ const SECRET_RULES = [
   },
   {
     rule: "secrets/openai-key",
-    re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b/,
+    re: /\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{32,}\b/,
     message: "What looks like an API key is hardcoded here.",
     fix: "Move it to an environment variable.",
   },
   {
+    rule: "secrets/google-api-key",
+    re: /\bAIza[0-9A-Za-z_-]{35}\b/,
+    message: "A Google API key is hardcoded here.",
+    fix: "Restrict the key in the Google Cloud console, then read it from the environment.",
+  },
+  {
+    rule: "secrets/npm-token",
+    re: /\bnpm_[A-Za-z0-9]{36}\b/,
+    message: "An npm access token is hardcoded here.",
+    fix: "Revoke it on npmjs.com and use NPM_TOKEN from your CI secrets instead.",
+  },
+  {
+    rule: "secrets/gitlab-token",
+    re: /\bglpat-[A-Za-z0-9_-]{20,}\b/,
+    message: "A GitLab personal access token is hardcoded here.",
+    fix: "Revoke it and move it to a CI variable.",
+  },
+  {
+    rule: "secrets/sendgrid-key",
+    re: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b/,
+    message: "A SendGrid API key is hardcoded here.",
+    fix: "Delete the key in SendGrid and read a new one from the environment.",
+  },
+  {
     rule: "secrets/connection-string",
-    re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s:@/]+:[^\s:@/]+@/i,
+    re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s:@/]+:[^\s:@/]+@[^\s"'`/?<]+/i,
     message: "A database URL with an inline password is hardcoded here.",
     fix: "Read the whole URL from the environment. Do not split it into parts and rebuild it.",
+  },
+  {
+    rule: "secrets/env-file-credential",
+    // Only in a committed .env file, where values are not quoted, so the rule
+    // above never fires. `.env.example` and friends are excused below because
+    // they exist precisely to hold placeholders.
+    re: /^\s*(?:export\s+)?[A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_KEY|PRIVATE_KEY|ACCESS_KEY)[A-Z0-9_]*\s*=\s*["']?[^\s"']{8,}/,
+    envOnly: true,
+    message: "A committed .env file sets a credential to a real-looking value.",
+    fix: "Delete the file from git, add it to .gitignore, and keep a .env.example with placeholders instead.",
   },
   {
     rule: "secrets/assigned-credential",
@@ -137,13 +171,34 @@ const LOCAL_HOST =
   /@(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|host\.docker\.internal|db|postgres|redis|mysql|mongo)(?::\d+)?(?![\w.-])/i;
 
 /** Obvious non-secrets. Without these the gate cries wolf and gets switched off. */
+// Applied to the matched text, plus a check for the word EXAMPLE anywhere in it
+// without a word boundary, because the canonical AWS documentation key is
+// `AKIAIOSFODNN7EXAMPLE` and the 7 glues the word to the rest of the token.
+function looksLikePlaceholder(matched) {
+  return PLACEHOLDER.test(matched) || /[A-Z0-9]EXAMPLE(?:KEY)?\b/.test(matched);
+}
+
 // `examples?(?![-\w])` rather than a plain word match, so that
 // `example.com` (an RFC 2606 documentation domain, genuinely a placeholder)
 // suppresses a finding while `example-corp.com` (somebody's real company) does
 // not. A word boundary alone treats the hyphen as a break and quietly excuses
 // the real host.
+// The word list needs word boundaries; the punctuation shapes must not have
+// them. `"${DB_PASSWORD}"` and `<fill-me-in>` were never excused while they sat
+// inside the \b group, because there is no word boundary between a quote and a
+// dollar sign, and the tests happened not to cover either.
 const PLACEHOLDER =
-  /\b(?:examples?(?![-\w])|sample|placeholder|dummy|fake|redacted|changeme|change_me|your[-_]?\w+|my[-_]?\w+|xxx+|test|TODO|FIXME|\.{3,}|<[^>]+>|\$\{[^}]+\}|process\.env|import\.meta\.env|os\.environ|None|null|undefined)\b/i;
+  /\b(?:examples?(?![-\w])|sample|placeholder|dummy|fake|redacted|changeme|change_me|your[-_]?\w+|my[-_]?\w+|xxx+|test|TODO|FIXME|process\.env|import\.meta\.env|os\.environ|None|null|undefined)\b|\.{3,}|<[^>]+>|\$\{[^}]+\}/i;
+
+/**
+ * Files that exist to hold placeholders.
+ *
+ * `.env.example`, `.env.sample` and `.env.template` are the documented way to
+ * tell a new developer which variables exist. Their values are fake by
+ * definition, and the committed-.env rule must not fire on them.
+ */
+const ENV_FILE = /(?:^|\/)\.env(?:\.[\w.-]+)?$/i;
+const ENV_TEMPLATE = /(?:^|\/)\.env\.(?:example|sample|template|dist|defaults?)$/i;
 
 const ALL = [
   ...SECRET_RULES.map((r) => ({ ...r, family: "secret" })),
@@ -189,6 +244,8 @@ export function scan(files, opts = {}) {
     if (!union.test(file.text)) continue;
 
     const inTest = isTestFile(norm);
+    const isEnv = ENV_FILE.test(norm);
+    const isEnvTemplate = ENV_TEMPLATE.test(norm);
     const all = lines(file);
 
     for (let i = 0; i < all.length; i++) {
@@ -197,18 +254,22 @@ export function scan(files, opts = {}) {
       if (!union.test(line)) continue;
 
       for (const r of rules) {
-        if (!r.re.test(line)) continue;
+        if (r.envOnly && (!isEnv || isEnvTemplate)) continue;
+        const m = r.re.exec(line);
+        if (!m) continue;
 
-        // The placeholder allowance applies to SECRET rules only.
+        // The placeholder allowance applies to SECRET rules only, and only to
+        // the text that matched, not the whole line.
         //
-        // Finding that out cost a real false negative:
-        //   curl https://get.example.com/install.sh | sh
-        // sailed through, because the line contains "example" and the check
-        // assumed anything mentioning "example" was documentation. For a secret
-        // that reasoning is right, a fake key is harmless. For a shape rule it is
-        // exactly backwards: piping a download into a shell is dangerous because
-        // of its form, and the host it points at is irrelevant.
-        if (r.family === "secret" && PLACEHOLDER.test(line)) continue;
+        // Both halves of that were learned the hard way. Applying it to every
+        // rule let `curl https://get.example.com/install.sh | sh` through,
+        // because the line contains "example": for a secret a fake key is
+        // harmless, but a pipe-to-shell is dangerous because of its form, and
+        // the host it points at is irrelevant. Applying it to the whole line let
+        // `password: "Hunter2Hunter2!", other: null` through, because `null`
+        // appeared somewhere on the line. The credential is the thing being
+        // judged, so the credential is the thing the placeholder test reads.
+        if (r.family === "secret" && looksLikePlaceholder(m[0])) continue;
         if (r.rule === "secrets/connection-string" && LOCAL_HOST.test(line)) continue;
         if (acknowledged(all, i, "secrets")) continue;
 
@@ -216,14 +277,19 @@ export function scan(files, opts = {}) {
         // 1,209 file repository these were 35% of every finding the gate produced,
         // and all of them were deliberate. Downgrading rather than excluding keeps
         // a genuinely leaked key visible instead of silently unscanned.
-        const downgrade = inTest && !r.liveByConstruction;
+        // A .env.example exists to show the shape of a credential, so the same
+        // downgrade applies there. Scanning it at all is new in 0.3, and the
+        // first real run reported a sample DATABASE_URL as a leak.
+        const downgrade = (inTest || isEnvTemplate) && !r.liveByConstruction;
         out.push(
           finding({
             path: file.path,
             line: i + 1,
             rule: r.rule,
             message: downgrade
-              ? r.message + " This is a test file, so it is reported as a warning."
+              ? r.message +
+                (inTest ? " This is a test file," : " This is an example env file,") +
+                " so it is reported as a warning."
               : r.message,
             fix: r.fix,
             severity: downgrade ? WARN : r.severity ?? ERROR,

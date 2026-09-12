@@ -2,6 +2,19 @@
 
 The hard part of a tool like this is not the first run. It is the second month.
 
+## Day one, in three commands
+
+```bash
+npx bouncer-gates --init             # writes bouncer.config.json; reads your Prisma schema if there is one
+npx bouncer-gates                    # see what it finds
+npx bouncer-gates --baseline-write   # if there is existing debt, record it so only new problems block
+```
+
+Commit `bouncer.config.json` and, if you wrote one, `bouncer.baseline.json`.
+Then add the workflow step from the README. The rest of this page is about
+what happens after that.
+
+
 ## The problem with day one
 
 Turn on a new gate in a mature repository and it surfaces two hundred existing

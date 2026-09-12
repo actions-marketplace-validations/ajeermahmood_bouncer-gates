@@ -39,6 +39,66 @@ const LINK = /(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const MD = /\.mdx?$/i;
 
 /**
+ * Blank out code so a link inside it is not a link.
+ *
+ * A fenced block or an inline span is where documentation SHOWS a link, for
+ * instance "[setup](docs/setup.md) after the file moved" as the example of what
+ * this very gate catches. Reading those as links reported the gate reference's
+ * own examples as broken, which is a funny thing for a tool to do to its own
+ * docs once and a false positive on every README with a code sample after that.
+ *
+ * Characters are replaced with spaces rather than removed, and newlines are
+ * kept, so every offset in the masked text is the same offset in the original
+ * and line numbers still come out right.
+ */
+export function maskCode(text) {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    // Fence: three or more backticks or tildes at the start of a line, closed
+    // by the same character at the start of a later line.
+    const atLineStart = i === 0 || text[i - 1] === "\n";
+    if (atLineStart && (text.startsWith("\`\`\`", i) || text.startsWith("~~~", i))) {
+      const ch = text[i];
+      let n = 0;
+      while (text[i + n] === ch) n++;
+      const fence = ch.repeat(n);
+      let end = text.indexOf("\n" + fence, i + n);
+      if (end === -1) end = text.length;
+      else {
+        end = end + 1 + fence.length;
+        while (end < text.length && text[end] === ch) end++; // longer closing fence
+      }
+      out += blank(text.slice(i, end));
+      i = end;
+      continue;
+    }
+    // Inline span: one or more backticks, closed by the same count on the same
+    // line. An unclosed one is literal text.
+    if (text[i] === "\`") {
+      let n = 0;
+      while (text[i + n] === "\`") n++;
+      const ticks = "\`".repeat(n);
+      const nl = text.indexOf("\n", i + n);
+      const lineEnd = nl === -1 ? text.length : nl;
+      const close = text.indexOf(ticks, i + n);
+      if (close !== -1 && close < lineEnd) {
+        out += blank(text.slice(i, close + n));
+        i = close + n;
+        continue;
+      }
+    }
+    out += text[i];
+    i++;
+  }
+  return out;
+}
+
+function blank(chunk) {
+  return chunk.replace(/[^\n]/g, " ");
+}
+
+/**
  * Directory set derived from the repo file list, cached.
  *
  * Deriving it walks every path segment of every tracked file. The CLI calls scan
@@ -81,12 +141,13 @@ export function scan(files, repoFiles, config = {}) {
     if (!MD.test(file.path)) continue;
     // Cheap reject: a document with no "](" has no links to resolve.
     if (file.text.indexOf("](") === -1) continue;
+    const prose = maskCode(file.text);
 
     const from = file.path.replace(/\\/g, "/");
     const slash = from.lastIndexOf("/");
     const baseDir = slash === -1 ? "" : from.slice(0, slash);
 
-    for (const m of file.text.matchAll(LINK)) {
+    for (const m of prose.matchAll(LINK)) {
       let raw = m[1];
 
       // An absolute link back into this same repository is still a link to a file

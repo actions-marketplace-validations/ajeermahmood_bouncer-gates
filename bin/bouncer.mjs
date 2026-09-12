@@ -23,13 +23,15 @@ import {
   applyBaseline,
   validateBaseline,
 } from "../gates/lib/baseline.mjs";
+import { prismaTenantModels, detectTenantColumn, repoUrlFromRemote } from "../gates/lib/prisma.mjs";
 
-const VERSION = "0.2.5";
+const VERSION = "0.3.0";
 
 const HELP = `bouncer ${VERSION}
 CI gates that let anyone contribute without being able to break things.
 
   bouncer                          run every gate over the whole repository
+  bouncer --init                   write a starter bouncer.config.json
   bouncer --changed                only files that differ from the base ref
   bouncer --only scope,money       run named gates
   bouncer --explain scope          what a gate checks and how to acknowledge it
@@ -50,6 +52,7 @@ Options
 const argv = process.argv.slice(2);
 
 const KNOWN_FLAGS = new Set([
+  "init",
   "changed",
   "baseline-write",
   "no-baseline",
@@ -108,12 +111,17 @@ const ONLY = value("only", "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
-const BASE = value("base", process.env.BOUNCER_BASE_REF || "origin/main");
+const BASE_GIVEN =
+  argv.some((a) => a === "--base" || a.startsWith("--base=")) || Boolean(process.env.BOUNCER_BASE_REF);
+let BASE = value("base", process.env.BOUNCER_BASE_REF || "origin/main");
 const ROOT = resolve(value("root", process.cwd()));
 const EXPLAIN = value("explain", "");
 
+// Committed .env files are scanned on purpose. Git only lists what is tracked,
+// so a .env that appears here is one somebody committed, which is the mistake
+// the secrets gate most wants to see.
 const SOURCE_EXT =
-  /\.(?:ts|tsx|js|jsx|mjs|cjs|astro|vue|svelte|py|go|rb|php|sh|ya?ml|json|env|sql|tf)$/i;
+  /\.(?:ts|tsx|js|jsx|mjs|cjs|astro|vue|svelte|py|go|rb|php|sh|ya?ml|json|env|sql|tf)$|(?:^|\/)\.env(?:\.[\w.-]+)?$/i;
 const TEXT_MAX = 512 * 1024;
 const BASELINE_PATH = join(ROOT, "bouncer.baseline.json");
 
@@ -181,10 +189,23 @@ function read(path) {
   return { text: buf.toString("utf8") };
 }
 
-/** Resolve the base ref once. Empty string means it is not available here. */
+/**
+ * Resolve the base ref once. Empty string means it is not available here.
+ *
+ * When nobody chose a base, the usual names are tried in order. A developer
+ * running this for the first time on a laptop, in a repository whose default
+ * branch is `master` or that has no remote yet, should see the migration gate
+ * run rather than a skip message about a branch they never mentioned. An
+ * explicit --base is never second-guessed.
+ */
 function resolveBase() {
-  if (!git(["rev-parse", "--verify", "--quiet", BASE]).trim()) return "";
-  return git(["merge-base", BASE, "HEAD"]).trim();
+  const candidates = BASE_GIVEN ? [BASE] : [BASE, "origin/master", "main", "master"];
+  for (const ref of candidates) {
+    if (!git(["rev-parse", "--verify", "--quiet", ref]).trim()) continue;
+    BASE = ref;
+    return git(["merge-base", ref, "HEAD"]).trim();
+  }
+  return "";
 }
 
 // ---------------------------------------------------------------- explain
@@ -200,6 +221,95 @@ if (EXPLAIN) {
       `    // bouncer-ok(${gate.name}): why this is fine here\n\n` +
       `The reason is required; a bare marker suppresses nothing.\n`
   );
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------- init
+
+/**
+ * A starting config, with the scope gate filled in from a Prisma schema.
+ *
+ * The docs have always said the model list should come from the schema. Until
+ * this existed, that was advice; now it is what happens. A repository without a
+ * Prisma schema still gets a config, with the scope section empty and a line of
+ * output saying exactly what that means.
+ */
+if (flag("init")) {
+  const target = join(ROOT, "bouncer.config.json");
+  if (existsSync(target)) {
+    fail("bouncer.config.json already exists. Edit it, or delete it and run --init again.");
+  }
+  const tracked = git(["ls-files"])
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const schemas = [];
+  for (const schemaPath of tracked.filter((p) => /\.prisma$/i.test(p))) {
+    const r = read(schemaPath);
+    if (!r.reason) schemas.push({ schemaPath, text: r.text });
+  }
+  // The column is guessed from all schemas together, then every model that has
+  // it becomes tenant-owned. The output names the guess so a wrong one is
+  // obvious on the first run rather than silent.
+  const column = detectTenantColumn(schemas.map((s) => s.text).join("\n"));
+  const found = [];
+  for (const { schemaPath, text } of schemas) {
+    for (const m of prismaTenantModels(text, column)) found.push({ ...m, schemaPath });
+  }
+
+  const config = {
+    exclude: [],
+    scope: {
+      models: found.map((m) => m.model),
+      tables: found.map((m) => m.table),
+      column,
+      rawAccessor: "raw",
+      clients: found.length ? ["prisma"] : [],
+    },
+  };
+  const repoUrl = repoUrlFromRemote(git(["remote", "get-url", "origin"]));
+  if (repoUrl) config["doc-links"] = { repoUrl };
+
+  writeFileSync(target, JSON.stringify(config, null, 2) + "\n");
+
+  const lines = [
+    "Wrote bouncer.config.json",
+    "",
+  ];
+  if (found.length) {
+    const schemas = [...new Set(found.map((m) => m.schemaPath))].join(", ");
+    lines.push(
+      "  scope: " +
+        found.length +
+        " tenant-owned model" +
+        (found.length === 1 ? "" : "s") +
+        " found in " +
+        schemas +
+        " (every model with a \"" +
+        column +
+        "\" field, the owner column used most): " +
+        found.map((m) => m.model).join(", "),
+      "         \"clients\" is set to [\"prisma\"], so plain prisma.<model> queries are checked",
+      "         for the tenant column. If you have a scoped wrapper, set \"rawAccessor\" to its",
+      "         raw client name and empty \"clients\" instead."
+    );
+  } else {
+    lines.push(
+      "  scope: no Prisma schema with a \"" + column + "\" field was found, so the scope gate",
+      "         will report skipped until you list your tenant-owned models under \"scope\"."
+    );
+  }
+  if (repoUrl) lines.push("  doc-links: absolute links back to " + repoUrl + " will be checked too");
+  lines.push(
+    "",
+    "Next:",
+    "  npx bouncer-gates                    see what it finds",
+    "  npx bouncer-gates --baseline-write   if there is existing debt, record it so only new problems block",
+    "  npx bouncer-gates --explain scope    what a gate checks and how to excuse one case",
+    ""
+  );
+  process.stdout.write(lines.join("\n"));
   process.exit(0);
 }
 

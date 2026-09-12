@@ -84,14 +84,16 @@ const RULES = [
   },
   {
     rule: "money/hardcoded-exponent",
-    re: new RegExp("\\b" + MONEYISH + "\\w*\\s*[*/]\\s*100\\b", "i"),
+    re: new RegExp("\\b(" + MONEYISH + "\\w*)\\s*[*/]\\s*100\\b", "i"),
+    ident: true,
     message:
       "A currency amount is multiplied or divided by a hardcoded 100, which assumes every currency has two decimal places. JPY has none; BHD has three.",
     fix: "Look the exponent up from the currency code.",
   },
   {
     rule: "money/float-parse",
-    re: new RegExp("(?:parseFloat|Number)\\s*\\(\\s*\\w*" + MONEYISH + "\\w*\\s*\\)", "i"),
+    re: new RegExp("(?:parseFloat|Number)\\s*\\(\\s*(\\w*" + MONEYISH + "\\w*)\\s*\\)", "i"),
+    ident: true,
     message:
       "A currency value is parsed into a float. Every later operation on it inherits binary rounding error.",
     fix: "Keep money as an integer in minor units, or as a decimal string, all the way through.",
@@ -118,6 +120,17 @@ const RULES = [
  */
 const STRONG_MONEY =
   /\b(?:amount|price|paise|cents|minor|subtotal|payable|payout|charge|refund|invoice|currency)\w*\b/i;
+
+/**
+ * A money word with a percentage suffix is a percentage.
+ *
+ * `taxRate / 100`, `discountPercent / 100` and `Number(discountPct)` all contain
+ * a money word and are all about a rate, not an amount. They were the next
+ * false-positive family after the `Math.round` percentages, and just as common:
+ * nearly every checkout has a line like `price * (1 - discountPercent / 100)`.
+ * The identifier itself says what it is, so the identifier is what gets checked.
+ */
+const PERCENT_SUFFIX = /(?:rate|rates|pct|percent|percentage|ratio|bps|factor|multiplier|fraction)$/i;
 
 const UNION = new RegExp(RULES.map((r) => "(?:" + r.re.source + ")").join("|"), "i");
 const SOURCE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
@@ -146,7 +159,13 @@ export function scan(files) {
 
       for (const r of RULES) {
         if (r.softOnly && !fileHasHardFinding) continue;
-        if (!r.re.test(line)) continue;
+        const m = r.re.exec(line);
+        if (!m) continue;
+
+        // The rule names a specific identifier. If that identifier is a rate or
+        // a percentage by its own name, or the line renders a percent sign, this
+        // is not money arithmetic.
+        if (r.ident && (PERCENT_SUFFIX.test(m[1]) || PERCENT_RENDER.test(line))) continue;
 
         if (r.notPercent) {
           // An explicit percent signal is decisive and cannot be overridden.

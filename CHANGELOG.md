@@ -2,6 +2,95 @@
 
 Notable changes. Dates are the day the work was done.
 
+## 0.3.0 - 2026-09-05
+
+A precision and adoption release. The gates were read against inputs they had
+never been shown, and the documentation was rewritten for someone who has never
+used a tool like this.
+
+### The scope gate works without a scoped client
+
+Until now the scope gate only checked code that reached around a tenant-scoped
+wrapper. Most codebases do not have one yet, and for them the gate could not see
+anything. `scope.clients` lists plain client names, and every list-style query
+on a tenant-owned model must then mention the tenant column somewhere in the
+call:
+
+```ts
+prisma.order.findMany({ where: { status: "paid" } })   // scope/unscoped-query
+```
+
+Single-row lookups by id are deliberately left alone, and the reference says why.
+
+### `bouncer --init`
+
+Writes a starter `bouncer.config.json`. If the repository has a Prisma schema,
+every model with a `tenantId` field becomes a tenant-owned model, with its
+`@@map` as the table name, and `clients` is set to `["prisma"]`. The tenant column is guessed from the schema (the owner-shaped field on the most
+models, so a schema built on `storeId` works too). The `doc-links`
+repo URL comes from the `origin` remote. The docs had always said the model list
+should be generated from the schema; now something does.
+
+### Secrets
+
+- The placeholder allowance reads only the credential that matched, not the
+  whole line. Any line that also contained `null`, `test` or `undefined` used
+  to excuse a real password on it.
+- `"${DB_PASSWORD}"` and `<fill-me-in>` were never treated as placeholders at
+  all, because there is no word boundary between a quote and a dollar sign. They
+  are now.
+- Committed `.env` files are scanned, and a credential-named variable set to a
+  real-looking value is reported as `secrets/env-file-credential`. Values in
+  `.env` are never quoted, so the assignment rule had never matched them.
+  `.env.example`, `.env.sample` and `.env.template` are left alone.
+- New prefixes: Google API keys, npm tokens, GitLab tokens, SendGrid keys, and
+  `sk-ant-` alongside `sk-proj-`.
+- The AWS documentation key `AKIAIOSFODNN7EXAMPLE` is no longer reported.
+- `.env.example` and friends are scanned but downgraded to warnings, like test
+  fixtures, so a sample `DATABASE_URL` does not block a build.
+
+### Money
+
+`taxRate / 100`, `discountPercent / 100` and `Number(feePct)` are rates, not
+amounts, and are no longer reported. The identifier's own suffix decides.
+
+### Migration safety
+
+- A `DEFAULT` on the line after `NOT NULL` is now seen. The old lookahead
+  stopped at the end of the line, so a safe column was reported.
+- `ADD a INT DEFAULT 1, ADD b INT NOT NULL` now reports `b`. The first clause's
+  default used to excuse the whole statement. Clauses are read one at a time.
+- Statements that only touch a table created in the same migration are skipped.
+  Every Prisma migration that creates a table and then indexes it produced two
+  warnings about locks on a table with no rows.
+- `DROP DEFAULT`, `DROP NOT NULL`, `DROP IDENTITY` and `DROP CONSTRAINT` are no
+  longer read as dropping a column. `ALTER INDEX ... RENAME` and
+  `RENAME CONSTRAINT` are no longer read as a breaking rename. A `NOT NULL`
+  identity or serial column is no longer reported.
+- Locally, with no `--base` given, the usual branch names are tried in order
+  (`origin/main`, `origin/master`, `main`, `master`) so a first run on a laptop
+  does not skip the gate over a branch nobody mentioned.
+
+### Doc links
+
+Links inside fenced code blocks and inline code spans are no longer read as
+links. The gate reference shows a broken link as its example of what the gate
+catches, and the gate reported its own example. Any README with a markdown
+sample would have hit the same thing.
+
+### Documentation
+
+The README is a fifth of its old length and written for a first-time user:
+what it checks with an example each, how to run it, what to do when it finds
+something, and a short glossary. The essays it used to carry moved to
+`docs/design-notes.md`. The gate reference now has a bad example and a fixed
+one for every gate, and a plain "what it misses" list.
+
+### Tests
+
+115, up from 86. Every fix above has a test that names the mistake.
+
+
 ## 0.2.5 - 2026-09-03
 
 ### A GitHub Action

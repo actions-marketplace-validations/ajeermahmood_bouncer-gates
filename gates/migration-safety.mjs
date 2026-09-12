@@ -51,20 +51,33 @@ const RULES = [
   {
     rule: "migration/drop-column",
     // Postgres allows both `DROP COLUMN x` and the bare `DROP x` inside ALTER TABLE.
-    re: /\bDROP\s+(?:COLUMN\s+)?"?\w+"?(?=\s*(?:,|;|$|\bCASCADE\b|\bRESTRICT\b))/i,
+    // The negative lookahead keeps ALTER COLUMN x DROP DEFAULT, DROP NOT NULL,
+    // DROP IDENTITY and DROP CONSTRAINT out. None of those removes a column, and
+    // the first two are exactly what a careful expand-contract migration does.
+    re: /\bDROP\s+(?:COLUMN\s+)?(?!(?:DEFAULT|NOT|IDENTITY|EXPRESSION|CONSTRAINT|INDEX|TABLE|IF)\b)"?\w+"?(?=\s*(?:,|;|$|\bCASCADE\b|\bRESTRICT\b))/i,
     guard: /\bALTER\s+TABLE\b/i,
     message: "Dropping a column. Any SELECT * or explicit read in the old version fails immediately.",
     fix: "Stop selecting it in this release, ship, then drop it in the next one.",
   },
   {
     rule: "migration/rename",
-    re: /\bRENAME\s+(?:TO|COLUMN|CONSTRAINT)\b/i,
+    // Only tables and columns. Renaming an index or a constraint changes nothing
+    // the old application can see.
+    re: /\bRENAME\s+(?:TO|COLUMN)\b/i,
+    guard: /\bALTER\s+TABLE\b/i,
     message: "A rename is a drop plus an add. The old version knows only the old name.",
     fix: "Add the new name, write to both, backfill, move reads, then remove the old name later.",
   },
   {
     rule: "migration/add-not-null",
-    re: /\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?!.*\bDEFAULT\b)[\s\S]*?\bNOT\s+NULL\b/i,
+    // Checked clause by clause rather than with one regex over the statement.
+    // The regex version had two bugs pulling in opposite directions: its
+    // "no DEFAULT" lookahead stopped at the end of the line, so a DEFAULT on the
+    // next line was invisible and a safe column was reported; and it read the
+    // whole statement at once, so "ADD a INT DEFAULT 1, ADD b INT NOT NULL" was
+    // excused by the first clause's default while the second had none.
+    re: /\bADD\b[\s\S]*\bNOT\s+NULL\b/i,
+    test: addsNotNullWithoutDefault,
     message: "Adding a NOT NULL column with no default. Every insert from the old version fails.",
     fix: "Add it nullable with a default, backfill, then tighten to NOT NULL in a later migration.",
   },
@@ -107,6 +120,71 @@ const RULES = [
  *     -- bouncer-ok(migration): add_referrals never reached production
  */
 const ACK = /--\s*bouncer-ok\(migration\)\s*:\s*\S+/i;
+
+/**
+ * The ADD clauses of an ALTER TABLE, each cut at the next top-level comma.
+ *
+ * DECIMAL(10, 2) has a comma inside it, so this walks the parentheses rather
+ * than splitting on the character.
+ */
+function addClauses(sql) {
+  const out = [];
+  const re = /\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?/gi;
+  let m;
+  while ((m = re.exec(sql))) {
+    let depth = 0;
+    let i = m.index + m[0].length;
+    const start = i;
+    for (; i < sql.length; i++) {
+      const ch = sql[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+      else if ((ch === "," || ch === ";") && depth === 0) break;
+    }
+    out.push(sql.slice(start, i));
+    re.lastIndex = i;
+  }
+  return out;
+}
+
+function addsNotNullWithoutDefault(sql) {
+  for (const clause of addClauses(sql)) {
+    if (/^\s*CONSTRAINT\b/i.test(clause)) continue;
+    if (!/\bNOT\s+NULL\b/i.test(clause)) continue;
+    if (/\bDEFAULT\b/i.test(clause)) continue;
+    // An identity or serial column fills itself in. The old application never
+    // has to supply it, so NOT NULL is safe here.
+    if (/\b(?:IDENTITY|SERIAL|BIGSERIAL|SMALLSERIAL)\b/i.test(clause)) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Tables this migration creates. A statement that only touches one of them
+ * cannot break the previous version of the application, because the previous
+ * version has never heard of the table. Without this, every Prisma migration
+ * that creates a table and then indexes it produces a warning about a lock on a
+ * table that has no rows and no readers.
+ */
+const CREATE_TABLE =
+  /\bCREATE\s+(?:UNLOGGED\s+|TEMP(?:ORARY)?\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?("?[\w.]+"?)/gi;
+const TARGET_TABLE =
+  /\b(?:ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?|DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?|INDEX\b[^;]*?\bON\s+(?:ONLY\s+)?)("?[\w.]+"?)/i;
+
+function tableName(raw) {
+  const bare = raw.replace(/"/g, "");
+  const dot = bare.lastIndexOf(".");
+  return (dot === -1 ? bare : bare.slice(dot + 1)).toLowerCase();
+}
+
+function createdTables(stmts) {
+  const set = new Set();
+  for (const s of stmts) {
+    for (const m of s.sql.matchAll(CREATE_TABLE)) set.add(tableName(m[1]));
+  }
+  return set;
+}
 
 /**
  * Split SQL into statements, remembering where each began.
@@ -220,10 +298,17 @@ export function scan(addedMigrations) {
     if (!/\.sql$/i.test(file.path)) continue;
     if (ACK.test(file.text)) continue;
 
-    for (const stmt of statements(file.text)) {
+    const stmts = statements(file.text);
+    const created = createdTables(stmts);
+
+    for (const stmt of stmts) {
+      const target = stmt.sql.match(TARGET_TABLE);
+      if (target && created.has(tableName(target[1]))) continue;
+
       for (const r of RULES) {
         if (r.guard && !r.guard.test(stmt.sql)) continue;
         if (!r.re.test(stmt.sql)) continue;
+        if (r.test && !r.test(stmt.sql)) continue;
         out.push(
           finding({
             path: file.path,

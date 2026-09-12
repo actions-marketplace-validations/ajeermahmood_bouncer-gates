@@ -23,6 +23,13 @@ import { finding, lines, acknowledged, isCommentLine, escapeRe, ERROR } from "./
  * It finds the three ways to bypass the safe path and asks you to justify each
  * one. That is a mechanical check, not a proof, and the difference matters:
  *
+ * Not every codebase has a scoped client yet. For those, "clients" lists the
+ * plain client names (say, "prisma") and the gate checks that every list-style
+ * query on a tenant-owned model mentions the tenant column somewhere in the
+ * call. That is a weaker guarantee than a scoped client, and it says so in its
+ * message, but it is the check that turns "we should always filter by tenant"
+ * from a convention into something the build enforces on day one.
+ *
  * KNOWN BLIND SPOTS, stated so nobody trusts this further than it deserves:
  *   - Interactive transactions. `db.$transaction((tx) => ...)` hands you a client
  *     bound to a variable this gate cannot follow. Cover those in review.
@@ -36,7 +43,7 @@ import { finding, lines, acknowledged, isCommentLine, escapeRe, ERROR } from "./
 export const name = "scope";
 export const title = "Tenant scope";
 export const summary =
-  "Database access that reaches around the tenant-scoped client, via the raw client, an alias, or raw SQL.";
+  "Queries on tenant-owned tables that are not limited to one tenant: through the raw client, an alias of it, raw SQL, or a plain client with no tenant filter.";
 
 /** Sensible defaults for a Prisma codebase. Override in bouncer.config.json. */
 export const DEFAULTS = {
@@ -45,6 +52,23 @@ export const DEFAULTS = {
   column: "tenantId",
   rawAccessor: "raw",
   rawSqlCalls: ["$queryRaw", "$queryRawUnsafe", "$executeRaw", "$executeRawUnsafe"],
+  // Plain client names to check directly, for codebases with no scoped client.
+  // Empty by default: a repository that has a scoped wrapper does not want its
+  // raw client name listed here, because the wrapper is what makes it safe.
+  clients: [],
+  // The query methods that return or touch many rows. findUnique, update and
+  // delete address one row by its own id and are left to review, because a
+  // finding on every one of them would be noise rather than signal.
+  queryMethods: [
+    "findMany",
+    "findFirst",
+    "findFirstOrThrow",
+    "updateMany",
+    "deleteMany",
+    "count",
+    "aggregate",
+    "groupBy",
+  ],
 };
 
 const SOURCE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
@@ -69,12 +93,17 @@ function compile(config) {
     cfg.column,
     cfg.rawAccessor,
     cfg.rawSqlCalls,
+    cfg.clients,
+    cfg.queryMethods,
   ]);
   const hit = COMPILED.get(key);
   if (hit) return hit;
 
   const modelAlt = cfg.models.map(escapeRe).join("|");
   const tableAlt = cfg.tables.map(escapeRe).join("|");
+  const clientAlt = (cfg.clients ?? []).map(escapeRe).join("|");
+  const methodAlt = (cfg.queryMethods ?? DEFAULTS.queryMethods).map(escapeRe).join("|");
+  const direct = Boolean(clientAlt && modelAlt);
 
   const built = {
     active: Boolean(cfg.models.length || cfg.tables.length),
@@ -95,9 +124,25 @@ function compile(config) {
       ? new RegExp("\\b(?:FROM|JOIN|UPDATE|INTO|TABLE)\\s+\"?(" + tableAlt + ")\"?\\b", "i")
       : null,
     hasScopeColumn: new RegExp("\\b" + escapeRe(cfg.column) + "\\b", "i"),
+    // prisma.order.findMany(   /  this.prisma.order.count(
+    // A dot may precede the client name, so "prisma" also covers "this.prisma".
+    // "db.raw.order" does not match "db" because ".raw." sits between them.
+    directQuery: direct
+      ? new RegExp(
+          "(?:^|[^\\w$])(?:" + clientAlt + ")\\.(" + modelAlt + ")\\.(?:" + methodAlt + ")\\s*\\("
+        )
+      : null,
+    // The call is scoped if the column appears, or if anything in it is named
+    // for the tenant: a "tenantWhere" built two lines up counts, because the
+    // alternative is flagging every query that builds its filter in a variable.
+    tenantHint: new RegExp("\\b" + escapeRe(cfg.column) + "\\b|tenant", "i"),
     // Whole-file reject: if none of these substrings appear, no line can match.
     trigger: new RegExp(
-      "\\." + escapeRe(cfg.rawAccessor) + "\\b|" + cfg.rawSqlCalls.map(escapeRe).join("|")
+      "\\." +
+        escapeRe(cfg.rawAccessor) +
+        "\\b|" +
+        cfg.rawSqlCalls.map(escapeRe).join("|") +
+        (direct ? "|(?:" + clientAlt + ")\\.(?:" + modelAlt + ")\\." : "")
     ),
   };
 
@@ -181,6 +226,35 @@ export function scan(files, config = {}) {
             })
           );
           break;
+        }
+      }
+
+      if (c.directQuery) {
+        const m = line.match(c.directQuery);
+        if (m) {
+          const stmt = statementAt(all, i);
+          if (!c.tenantHint.test(stmt)) {
+            out.push(
+              finding({
+                path: file.path,
+                line: i + 1,
+                rule: "scope/unscoped-query",
+                message:
+                  '"' +
+                  m[1] +
+                  '" is tenant-owned, but nothing in this query mentions "' +
+                  c.column +
+                  '", so it returns rows from every tenant.',
+                fix:
+                  "Add " +
+                  c.column +
+                  " to the where clause, or go through a tenant-scoped client. " +
+                  "If this must span tenants (an admin report, a cron job), say so: // bouncer-ok(scope): <why>",
+                severity: ERROR,
+              })
+            );
+          }
+          continue;
         }
       }
 
