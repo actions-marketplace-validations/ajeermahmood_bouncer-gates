@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "bouncer": {
+      "command": "node",
+      "args": [
+        "bin/bouncer.mjs",
+        "--mcp"
+      ]
+    }
+  }
+}
