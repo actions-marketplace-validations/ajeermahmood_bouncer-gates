@@ -60,7 +60,8 @@ is unaffected.
 
 ## Reading the numbers
 
-Pings land in a Cloudflare Analytics Engine dataset. With an API token that has
+Pings land in a Cloudflare Analytics Engine dataset. Analytics Engine has to be
+enabled once for the account in the dashboard. With an API token that has
 "Account Analytics: Read":
 
 ```bash

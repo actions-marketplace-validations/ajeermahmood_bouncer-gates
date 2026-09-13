@@ -20,8 +20,9 @@ binding = "ASSETS"
 # is slower and pointless.
 not_found_handling = "404-page"
 
-# The usage counter behind /api/ping. Analytics Engine needs no provisioning:
-# the dataset appears on first write. Query it with `node tools/stats.mjs`.
+# The usage counter behind /api/ping. Enable Analytics Engine once for the
+# account in the dashboard (Workers, Analytics Engine), or the deploy fails with
+# error 10089. After that the dataset appears on first write. Query it with `node tools/stats.mjs`.
 [[analytics_engine_datasets]]
 binding = "PINGS"
 dataset = "bouncer_pings"

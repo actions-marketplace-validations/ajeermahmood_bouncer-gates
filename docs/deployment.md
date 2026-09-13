@@ -47,7 +47,9 @@ endpoint is not there and the fallback is covering for it.
 ### The usage counter
 
 `/api/ping` writes to an Analytics Engine dataset declared in `wrangler.toml`.
-It needs no provisioning. `npm run stats` with `CF_ACCOUNT_ID` and a
+Analytics Engine has to be enabled once for the account, in the dashboard under
+Workers, or `wrangler deploy` refuses the binding with error 10089. After that
+the dataset appears on first write. `npm run stats` with `CF_ACCOUNT_ID` and a
 `CF_API_TOKEN` that has Account Analytics: Read prints the numbers. What the
 client sends is in [telemetry.md](telemetry.md).
 
