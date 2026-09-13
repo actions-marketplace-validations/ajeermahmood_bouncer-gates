@@ -16,6 +16,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The project's own CI runs would otherwise count as users. See docs/telemetry.md.
+env:
+  BOUNCER_TELEMETRY: "0"
+
 jobs:
   gates:
     name: Gates

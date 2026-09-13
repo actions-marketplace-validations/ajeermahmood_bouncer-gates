@@ -1,6 +1,6 @@
 {
   "name": "bouncer-gates",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "CI gates that let anyone contribute to a codebase without being able to break it.",
   "type": "module",
   "license": "MIT",
@@ -26,6 +26,7 @@
     "check:changed": "node bin/bouncer.mjs --changed",
     "baseline": "node bin/bouncer.mjs --baseline-write",
     "bench": "node tools/bench.mjs",
+    "stats": "node tools/stats.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "astro dev",
@@ -52,7 +53,11 @@
     "secrets",
     "migrations",
     "code-review",
-    "devtools"
+    "devtools",
+    "mcp",
+    "claude-code",
+    "cursor",
+    "ai-agents"
   ],
   "homepage": "https://bouncer.ajeermdk001.workers.dev",
   "bugs": {

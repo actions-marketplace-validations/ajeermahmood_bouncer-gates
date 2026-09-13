@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * The runner. All the I/O lives here so the gates can stay pure.
+ * The CLI. Argument parsing, printing and exit codes live here; the scan itself
+ * is `bin/lib/run.mjs`, shared with the MCP server and the editor hook.
  *
  * Exit codes:
  *   0  nothing blocking
@@ -11,27 +12,20 @@
  * reactions, and collapsing them means a misconfigured runner looks exactly like
  * a codebase full of problems.
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { GATES } from "../gates/index.mjs";
-import { lines } from "../gates/lib/finding.mjs";
-import { globToRe } from "../gates/lib/glob.mjs";
-import {
-  fingerprintAll,
-  createBaseline,
-  applyBaseline,
-  validateBaseline,
-} from "../gates/lib/baseline.mjs";
+import { createBaseline } from "../gates/lib/baseline.mjs";
 import { prismaTenantModels, detectTenantColumn, repoUrlFromRemote } from "../gates/lib/prisma.mjs";
-
-const VERSION = "0.3.0";
+import { runGates, toJson, RunnerError, VERSION, git, read } from "./lib/run.mjs";
+import { recordUse, NOTICE } from "./lib/telemetry.mjs";
 
 const HELP = `bouncer ${VERSION}
-CI gates that let anyone contribute without being able to break things.
+CI gates that let anyone, or any agent, contribute without being able to break things.
 
   bouncer                          run every gate over the whole repository
   bouncer --init                   write a starter bouncer.config.json
+  bouncer --init-agents            wire Bouncer into Claude Code and Cursor for this repo
   bouncer --changed                only files that differ from the base ref
   bouncer --only scope,money       run named gates
   bouncer --explain scope          what a gate checks and how to acknowledge it
@@ -46,13 +40,18 @@ Options
   --quiet            print failures only
   --no-color         plain output
   --root <dir>       repository root (default: cwd)
+  --mcp              serve the gates over MCP on stdin/stdout, for an agentic editor
+  --hook             read an editor hook event on stdin, scan the file it names, exit 2 on findings
   --version, --help
+
+Telemetry: one anonymous ping a day. BOUNCER_TELEMETRY=0 turns it off. See docs/telemetry.md.
 `;
 
 const argv = process.argv.slice(2);
 
 const KNOWN_FLAGS = new Set([
   "init",
+  "init-agents",
   "changed",
   "baseline-write",
   "no-baseline",
@@ -62,6 +61,8 @@ const KNOWN_FLAGS = new Set([
   "help",
   "version",
   "no-color",
+  "mcp",
+  "hook",
 ]);
 const KNOWN_VALUES = new Set(["base", "only", "root", "explain"]);
 
@@ -113,32 +114,9 @@ const ONLY = value("only", "")
   .filter(Boolean);
 const BASE_GIVEN =
   argv.some((a) => a === "--base" || a.startsWith("--base=")) || Boolean(process.env.BOUNCER_BASE_REF);
-let BASE = value("base", process.env.BOUNCER_BASE_REF || "origin/main");
+const BASE = value("base", process.env.BOUNCER_BASE_REF || "origin/main");
 const ROOT = resolve(value("root", process.cwd()));
 const EXPLAIN = value("explain", "");
-
-// Committed .env files are scanned on purpose. Git only lists what is tracked,
-// so a .env that appears here is one somebody committed, which is the mistake
-// the secrets gate most wants to see.
-const SOURCE_EXT =
-  /\.(?:ts|tsx|js|jsx|mjs|cjs|astro|vue|svelte|py|go|rb|php|sh|ya?ml|json|env|sql|tf)$|(?:^|\/)\.env(?:\.[\w.-]+)?$/i;
-const TEXT_MAX = 512 * 1024;
-const BASELINE_PATH = join(ROOT, "bouncer.baseline.json");
-
-// ---------------------------------------------------------------- helpers
-
-function git(args) {
-  try {
-    return execFileSync("git", args, {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      maxBuffer: 64 * 1024 * 1024,
-    });
-  } catch {
-    return "";
-  }
-}
 
 function wrap(s, width = 78) {
   const out = [];
@@ -153,64 +131,59 @@ function wrap(s, width = 78) {
   return out.join("\n");
 }
 
-function loadJson(path, label) {
-  if (!existsSync(path)) return null;
-  try {
-    return JSON.parse(readFileSync(path, "utf8"));
-  } catch (e) {
-    fail(`${label} is not valid JSON: ${e.message}`);
-  }
+/**
+ * The usage ping, after the work is done and never in the way of it.
+ *
+ * The first-run notice goes to stderr so it cannot corrupt --json or --sarif
+ * output, and it is printed once, when the id file is created.
+ */
+async function ping(runtime) {
+  const r = await recordUse(runtime, VERSION).catch(() => ({ notice: false }));
+  if (r.notice && runtime === "cli") process.stderr.write("\n" + NOTICE);
 }
 
-/**
- * Read a tracked file, or say why not.
- *
- * Returning a reason rather than a bare null is the same rule the gates follow.
- * A file that cannot be read is a file that is not scanned, and an earlier
- * version dropped those silently, so a source file could sit in the repository
- * being checked by nothing at all while the run reported green.
- *
- * That is not hypothetical. `gates/lib/finding.mjs` used raw NUL bytes as
- * fingerprint separators, which made it binary, which made this function skip it.
- * The tool's own core library was invisible to the tool for several releases, and
- * nothing in the output hinted at it.
- *
- * @returns {{text: string} | {reason: string}}
- */
-function read(path) {
-  let buf;
-  try {
-    buf = readFileSync(join(ROOT, path));
-  } catch (e) {
-    return { reason: e.code === "ENOENT" ? "not on disk" : "unreadable" };
-  }
-  if (buf.length > TEXT_MAX) return { reason: "larger than 512KB" };
-  if (buf.includes(0)) return { reason: "binary" };
-  return { text: buf.toString("utf8") };
-}
+// ---------------------------------------------------------------- mcp / hook
 
-/**
- * Resolve the base ref once. Empty string means it is not available here.
- *
- * When nobody chose a base, the usual names are tried in order. A developer
- * running this for the first time on a laptop, in a repository whose default
- * branch is `master` or that has no remote yet, should see the migration gate
- * run rather than a skip message about a branch they never mentioned. An
- * explicit --base is never second-guessed.
- */
-function resolveBase() {
-  const candidates = BASE_GIVEN ? [BASE] : [BASE, "origin/master", "main", "master"];
-  for (const ref of candidates) {
-    if (!git(["rev-parse", "--verify", "--quiet", ref]).trim()) continue;
-    BASE = ref;
-    return git(["merge-base", ref, "HEAD"]).trim();
+if (flag("mcp")) {
+  const { serve } = await import("./lib/mcp.mjs");
+  serve({ root: ROOT, base: BASE_GIVEN ? BASE : "" });
+  ping("mcp");
+} else if (flag("hook")) {
+  const { hook } = await import("./lib/agents.mjs");
+  // Run by hand with nothing piped in, this would sit waiting for stdin
+  // forever and look hung. Say what it expects instead.
+  if (process.stdin.isTTY) {
+    fail("--hook reads a hook event as JSON on stdin, for example: echo '{\"file_path\":\"src/a.ts\"}' | bouncer --hook");
   }
-  return "";
+  const chunks = [];
+  for await (const c of process.stdin) chunks.push(c);
+  const { code, message } = hook(Buffer.concat(chunks).toString("utf8"), {
+    root: ROOT,
+    base: BASE_GIVEN ? BASE : "",
+  });
+  if (message) process.stderr.write(message);
+  await ping("hook");
+  process.exit(code);
+} else if (flag("init-agents")) {
+  const { initAgents } = await import("./lib/agents.mjs");
+  try {
+    process.stdout.write("Wired Bouncer into the agentic editors for this repository\n\n" + initAgents(ROOT).join("\n"));
+  } catch (e) {
+    if (e instanceof RunnerError) fail(e.message);
+    throw e;
+  }
+  process.exit(0);
+} else if (EXPLAIN) {
+  explain();
+} else if (flag("init")) {
+  init();
+} else {
+  await main();
 }
 
 // ---------------------------------------------------------------- explain
 
-if (EXPLAIN) {
+function explain() {
   const gate = GATES.find((g) => EXPLAIN === g.name || EXPLAIN.startsWith(g.name + "/"));
   if (!gate) {
     fail(`no gate matches "${EXPLAIN}". Known gates: ${GATES.map((g) => g.name).join(", ")}`);
@@ -234,19 +207,19 @@ if (EXPLAIN) {
  * Prisma schema still gets a config, with the scope section empty and a line of
  * output saying exactly what that means.
  */
-if (flag("init")) {
+function init() {
   const target = join(ROOT, "bouncer.config.json");
   if (existsSync(target)) {
     fail("bouncer.config.json already exists. Edit it, or delete it and run --init again.");
   }
-  const tracked = git(["ls-files"])
+  const tracked = git(ROOT, ["ls-files"])
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean);
 
   const schemas = [];
   for (const schemaPath of tracked.filter((p) => /\.prisma$/i.test(p))) {
-    const r = read(schemaPath);
+    const r = read(ROOT, schemaPath);
     if (!r.reason) schemas.push({ schemaPath, text: r.text });
   }
   // The column is guessed from all schemas together, then every model that has
@@ -268,36 +241,33 @@ if (flag("init")) {
       clients: found.length ? ["prisma"] : [],
     },
   };
-  const repoUrl = repoUrlFromRemote(git(["remote", "get-url", "origin"]));
+  const repoUrl = repoUrlFromRemote(git(ROOT, ["remote", "get-url", "origin"]));
   if (repoUrl) config["doc-links"] = { repoUrl };
 
   writeFileSync(target, JSON.stringify(config, null, 2) + "\n");
 
-  const lines = [
-    "Wrote bouncer.config.json",
-    "",
-  ];
+  const lines = ["Wrote bouncer.config.json", ""];
   if (found.length) {
-    const schemas = [...new Set(found.map((m) => m.schemaPath))].join(", ");
+    const names = [...new Set(found.map((m) => m.schemaPath))].join(", ");
     lines.push(
       "  scope: " +
         found.length +
         " tenant-owned model" +
         (found.length === 1 ? "" : "s") +
         " found in " +
-        schemas +
-        " (every model with a \"" +
+        names +
+        ' (every model with a "' +
         column +
-        "\" field, the owner column used most): " +
+        '" field, the owner column used most): ' +
         found.map((m) => m.model).join(", "),
-      "         \"clients\" is set to [\"prisma\"], so plain prisma.<model> queries are checked",
-      "         for the tenant column. If you have a scoped wrapper, set \"rawAccessor\" to its",
-      "         raw client name and empty \"clients\" instead."
+      '         "clients" is set to ["prisma"], so plain prisma.<model> queries are checked',
+      '         for the tenant column. If you have a scoped wrapper, set "rawAccessor" to its',
+      '         raw client name and empty "clients" instead.'
     );
   } else {
     lines.push(
-      "  scope: no Prisma schema with a \"" + column + "\" field was found, so the scope gate",
-      "         will report skipped until you list your tenant-owned models under \"scope\"."
+      '  scope: no Prisma schema with a "' + column + '" field was found, so the scope gate',
+      '         will report skipped until you list your tenant-owned models under "scope".'
     );
   }
   if (repoUrl) lines.push("  doc-links: absolute links back to " + repoUrl + " will be checked too");
@@ -305,6 +275,7 @@ if (flag("init")) {
     "",
     "Next:",
     "  npx bouncer-gates                    see what it finds",
+    "  npx bouncer-gates --init-agents      run the same gates inside Claude Code and Cursor",
     "  npx bouncer-gates --baseline-write   if there is existing debt, record it so only new problems block",
     "  npx bouncer-gates --explain scope    what a gate checks and how to excuse one case",
     ""
@@ -313,228 +284,43 @@ if (flag("init")) {
   process.exit(0);
 }
 
-// ---------------------------------------------------------------- context
-
-function buildContext(gates, config) {
-  const needed = new Set(gates.flatMap((g) => g.needs));
-  let tracked = git(["ls-files"])
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  if (!tracked.length) {
-    fail(
-      `no tracked files found in ${ROOT}.\n` +
-        `Bouncer reads the file list from git, so it runs on what is committed rather ` +
-        `than whatever is lying in the directory. Run it inside a git repository.`
-    );
-  }
-
-  const mergeBase = needed.has("addedSql") || CHANGED ? resolveBase() : "";
-
-  // Excluded paths.
-  //
-  // A repository of gates necessarily contains the patterns those gates look
-  // for: test fixtures and playground examples are hardcoded secrets and
-  // cross-tenant queries on purpose. So exclusion has to exist.
-  //
-  // What matters is that it is loud. These are declared in bouncer.config.json,
-  // never inferred, and the runner prints how many files each pattern removed on
-  // every run. An exclude list that silently grows to cover half the codebase is
-  // the most likely way a setup like this rots.
-  //
-  // This removes a FILE from scanning. It is not a way to switch a rule off
-  // across the repo; that is the per-line escape hatch, and it demands a reason.
-  const patterns = Array.isArray(config.exclude) ? config.exclude : [];
-  const excluded = [];
-  if (patterns.length) {
-    const res = patterns.map((p) => ({ pattern: p, re: globToRe(p) }));
-    const kept = [];
-    for (const path of tracked) {
-      const hit = res.find((r) => r.re.test(path));
-      if (hit) excluded.push({ path, pattern: hit.pattern });
-      else kept.push(path);
-    }
-    tracked = kept;
-  }
-
-  // --changed narrows the scan to this branch's own work. On a large repository
-  // that is the difference between a check people run and one they wait for.
-  //
-  // If the base ref is missing (a shallow CI clone), this does NOT quietly fall
-  // back to scanning everything or nothing. Scanning everything would be a
-  // surprise timeout; scanning nothing would pass for the wrong reason. It stops
-  // and says so, which is the same rule the gates themselves follow.
-  let changedSet = null;
-  if (CHANGED) {
-    if (!mergeBase) {
-      fail(
-        `--changed needs the base ref "${BASE}", which is not in this clone.\n` +
-          `In GitHub Actions add "fetch-depth: 0" to actions/checkout, or pass --base.`
-      );
-    }
-    const names = git(["diff", "--name-only", "--diff-filter=ACMR", mergeBase, "HEAD"]);
-    changedSet = new Set(
-      names
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean)
-    );
-  }
-
-  const ctx = {
-    source: [],
-    markdown: [],
-    // repoFiles keeps excluded and unchanged paths. A link to a test fixture is
-    // still a link to a file that exists, and doc-links would call it broken.
-    repoFiles: new Set([...tracked, ...excluded.map((e) => e.path)]),
-    addedSql: [],
-    excluded,
-    unreadable: [],
-    changedCount: changedSet ? changedSet.size : null,
-    baseAvailable: Boolean(mergeBase),
-    baseRef: BASE,
-  };
-
-  if (needed.has("source") || needed.has("markdown")) {
-    for (const path of tracked) {
-      if (changedSet && !changedSet.has(path)) continue;
-      const isMd = /\.mdx?$/i.test(path);
-      if (!isMd && !SOURCE_EXT.test(path)) continue;
-      const r = read(path);
-      if (r.reason) {
-        // Not scanned, and therefore worth saying out loud. Silence here means a
-        // file is checked by nothing while the run still reports green.
-        ctx.unreadable.push({ path, reason: r.reason });
-        continue;
-      }
-      // Split once here. Gates share the array through lines(), so a repository
-      // with three line-based gates splits each file once instead of three times.
-      const file = { path, text: r.text, lines: r.text.split(/\r\n|\r|\n/) };
-      if (isMd) ctx.markdown.push(file);
-      else ctx.source.push(file);
-    }
-  }
-
-  if (needed.has("addedSql") && mergeBase) {
-    const out = git(["diff", "--name-only", "--diff-filter=A", mergeBase, "HEAD"]);
-    ctx.addedSql = out
-      .split("\n")
-      .map((s) => s.trim())
-      .filter((p) => p && /\.sql$/i.test(p))
-      .map((path) => {
-        const r = read(path);
-        if (r.reason) ctx.unreadable.push({ path, reason: r.reason });
-        return { path, text: r.text ?? "" };
-      });
-  }
-
-  return ctx;
-}
-
 // ---------------------------------------------------------------- run
 
-const config = loadJson(join(ROOT, "bouncer.config.json"), "bouncer.config.json") ?? {};
-const selected = ONLY.length ? GATES.filter((g) => ONLY.includes(g.name)) : GATES;
-if (ONLY.length) {
-  const unknown = ONLY.filter((n) => !GATES.some((g) => g.name === n));
-  if (unknown.length) {
-    fail(
-      `unknown gate(s) in --only: ${unknown.join(", ")}. ` +
-        `Available: ${GATES.map((g) => g.name).join(", ")}`
-    );
-  }
-}
-
-const started = Date.now();
-const ctx = buildContext(selected, config);
-const results = [];
-
-for (const gate of selected) {
-  const skip = gate.skipWhen?.(ctx, config);
-  if (skip) {
-    results.push({ gate: gate.name, status: "skipped", reason: skip, findings: [] });
-    continue;
-  }
+async function main() {
+  let run;
   try {
-    results.push({ gate: gate.name, status: "ran", findings: gate.run(ctx, config) ?? [] });
+    run = runGates({
+      root: ROOT,
+      base: BASE,
+      baseGiven: BASE_GIVEN,
+      changed: CHANGED,
+      only: ONLY,
+      // --baseline-write wants every finding, including the ones a previous
+      // baseline hides, or the new file would silently drop them.
+      noBaseline: NO_BASELINE || WRITE_BASELINE,
+    });
   } catch (e) {
-    // A crashed gate is a failure. The alternative is a build that goes green
-    // because the check threw before it could find anything.
-    results.push({ gate: gate.name, status: "crashed", reason: e.message, findings: [] });
+    if (e instanceof RunnerError) fail(e.message);
+    throw e;
   }
-}
 
-// Fingerprint against the source line, for the baseline.
-const byPath = new Map();
-for (const f of [...ctx.source, ...ctx.markdown, ...ctx.addedSql]) byPath.set(f.path, f);
-const lineTextOf = (f) => {
-  const file = byPath.get(f.path);
-  return file ? lines(file)[f.line - 1] ?? "" : "";
-};
-
-for (const r of results) r.findings = fingerprintAll(r.findings, lineTextOf);
-let all = results.flatMap((r) => r.findings);
-
-if (WRITE_BASELINE) {
-  const baseline = createBaseline(all);
-  writeFileSync(BASELINE_PATH, JSON.stringify(baseline, null, 2) + "\n");
-  process.stdout.write(
-    `Wrote ${BASELINE_PATH}\n${baseline.count} existing finding` +
-      `${baseline.count === 1 ? "" : "s"} recorded. They no longer block; anything new will.\n`
-  );
-  process.exit(0);
-}
-
-let grandfathered = [];
-let stale = [];
-if (!NO_BASELINE) {
-  const baseline = loadJson(BASELINE_PATH, "bouncer.baseline.json");
-  if (baseline) {
-    const problem = validateBaseline(baseline);
-    if (problem) fail(`bouncer.baseline.json: ${problem}`);
-    const split = applyBaseline(all, baseline);
-    all = split.blocking;
-    grandfathered = split.grandfathered;
-    stale = split.stale;
-    const keep = new Set(all.map((f) => f.fp));
-    for (const r of results) r.findings = r.findings.filter((f) => keep.has(f.fp));
+  if (WRITE_BASELINE) {
+    const baseline = createBaseline(run.all);
+    writeFileSync(run.baselinePath, JSON.stringify(baseline, null, 2) + "\n");
+    process.stdout.write(
+      `Wrote ${run.baselinePath}\n${baseline.count} existing finding` +
+        `${baseline.count === 1 ? "" : "s"} recorded. They no longer block; anything new will.\n`
+    );
+    process.exit(0);
   }
+
+  if (SARIF_OUT) process.stdout.write(JSON.stringify(sarif(run.all), null, 2) + "\n");
+  else if (JSON_OUT) process.stdout.write(JSON.stringify(toJson(run), null, 2) + "\n");
+  else report(run);
+
+  await ping("cli");
+  process.exit(run.errorCount > 0 || run.crashed ? 1 : 0);
 }
-
-for (const r of results) {
-  if (r.status !== "ran") continue;
-  const errs = r.findings.filter((f) => f.severity === "error").length;
-  r.status = errs ? "failed" : r.findings.length ? "warned" : "passed";
-}
-
-const errorCount = all.filter((f) => f.severity === "error").length;
-const crashed = results.some((r) => r.status === "crashed");
-const elapsed = Date.now() - started;
-
-if (SARIF_OUT) process.stdout.write(JSON.stringify(sarif(all), null, 2) + "\n");
-else if (JSON_OUT) {
-  process.stdout.write(
-    JSON.stringify(
-      {
-        version: VERSION,
-        elapsedMs: elapsed,
-        results,
-        errorCount,
-        grandfathered: grandfathered.length,
-        stale,
-        // Machine consumers need to know about a hole in the run just as much as
-        // a human reading the terminal does, and more, since nobody is watching.
-        unreadable: ctx.unreadable,
-        excluded: ctx.excluded.length,
-      },
-      null,
-      2
-    ) + "\n"
-  );
-} else report();
-
-process.exit(errorCount > 0 || crashed ? 1 : 0);
 
 // ---------------------------------------------------------------- output
 
@@ -586,7 +372,8 @@ function sarif(findings) {
   };
 }
 
-function report() {
+function report(run) {
+  const { ctx, results, all, grandfathered, stale, errorCount, elapsedMs: elapsed } = run;
   const useColor = process.stdout.isTTY && !process.env.NO_COLOR && !flag("no-color");
   const paint = (code) => (s) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : s);
   const red = paint(31);

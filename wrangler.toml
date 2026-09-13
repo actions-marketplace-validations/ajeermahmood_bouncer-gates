@@ -19,3 +19,9 @@ binding = "ASSETS"
 # when none does. Without this the Worker runs on every asset request too, which
 # is slower and pointless.
 not_found_handling = "404-page"
+
+# The usage counter behind /api/ping. Analytics Engine needs no provisioning:
+# the dataset appears on first write. Query it with `node tools/stats.mjs`.
+[[analytics_engine_datasets]]
+binding = "PINGS"
+dataset = "bouncer_pings"

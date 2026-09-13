@@ -52,7 +52,8 @@ A gate imports from `./lib/finding.mjs` and nothing else. No `node:fs`, no
 
 This is not style. The same functions run in four places:
 
-- `bin/bouncer.mjs`, the CLI, which reads from disk
+- `bin/bouncer.mjs`, the CLI, which reads from disk through `bin/lib/run.mjs`
+- `bin/lib/mcp.mjs` and `bin/lib/agents.mjs`, the MCP server and editor hook, same runner
 - `functions/api/scan.js`, a Cloudflare Worker, where no filesystem exists
 - `server/index.mjs`, a Node service on Railway
 - `src/components/Playground.tsx`, in the browser

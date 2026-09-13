@@ -28,6 +28,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/scan") return handleScan(request);
+    if (url.pathname === "/api/ping") return handlePing(request, env);
 
     // Everything else is the static site.
     return env.ASSETS.fetch(request);
@@ -68,6 +69,43 @@ async function handleScan(request) {
 
   const { findings, crashed, unavailable } = runDemoGates(code, filename);
   return json({ findings, crashed, unavailable }, crashed.length ? 500 : 200);
+}
+
+/**
+ * The usage counter. See docs/telemetry.md for what the CLI sends and why.
+ *
+ * Each ping becomes one row in an Analytics Engine dataset: a random id, the
+ * version, the runtime, the OS and the Node major. That is the whole schema.
+ * Nothing in the request body beyond those five fields is read, so even a
+ * misbehaving client cannot get anything else stored here.
+ *
+ * If the dataset binding is missing (a Pages deployment, or a fork that has
+ * not set it up) the ping is accepted and dropped. Telemetry must never make
+ * the client wait or fail, and it must never make the site fail either.
+ */
+const RUNTIMES = new Set(["cli", "mcp", "hook", "ci"]);
+
+async function handlePing(request, env) {
+  if (request.method !== "POST") return new Response(null, { status: 405 });
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(null, { status: 400 });
+  }
+  const runtime = RUNTIMES.has(body?.runtime) ? body.runtime : "unknown";
+  const id = typeof body?.id === "string" && /^[a-z0-9]{16,64}$/.test(body.id) ? body.id : "";
+  const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
+  const os = typeof body?.os === "string" ? body.os.slice(0, 16) : "";
+  const node = Number.isInteger(body?.node) ? String(body.node) : "";
+  try {
+    env.PINGS?.writeDataPoint({
+      blobs: [runtime, version, os, node, id],
+      doubles: [1],
+      indexes: [id || runtime],
+    });
+  } catch {}
+  return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 }
 
 function json(data, status = 200) {

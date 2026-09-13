@@ -1,11 +1,17 @@
 # Bouncer
 
-**Five checks that run on every pull request and stop the expensive mistakes
-before they merge.**
+**Five checks that stop the expensive mistakes before they merge, whether a
+person or an agent wrote the code.**
 
 Hardcoded secrets. Database queries that leak one customer's data to another.
 Float maths on money. Migrations that break the running app. Docs that link to
 files which no longer exist.
+
+Agents write most new code now, and they make exactly these mistakes: a key
+pasted in to make a test pass, a query with no tenant filter because the prompt
+never mentioned tenants. Bouncer runs inside Claude Code and Cursor, so the
+agent hears about it in the same turn it wrote it, and again in CI so nothing
+gets through.
 
 Try it on any repository in ten seconds:
 
@@ -21,8 +27,9 @@ and watch the same checks run on it.
 ## Quick start
 
 ```bash
-npx bouncer-gates --init     # writes bouncer.config.json, reads your Prisma schema if you have one
-npx bouncer-gates            # runs every check and prints what it found
+npx bouncer-gates --init          # writes bouncer.config.json, reads your Prisma schema if you have one
+npx bouncer-gates --init-agents   # wires the same checks into Claude Code and Cursor for this repo
+npx bouncer-gates                 # runs every check and prints what it found
 ```
 
 Add it to GitHub Actions:
@@ -34,10 +41,27 @@ steps:
       fetch-depth: 0             # needed so the migration check can see what is new
   - uses: ajeermahmood/bouncer@v0
     with:
-      version: "0.3.0"
+      version: "0.4.0"
 ```
 
 That is the whole setup. Everything below is detail.
+
+## In the editor, with the agent
+
+`--init-agents` commits two things into the repository: an MCP server the agent
+can call, and a hook that scans every file the agent writes. When a file has a
+blocking finding, the agent sees the file, the line, what is wrong and what to
+do instead, in the same turn:
+
+```
+x src/orders.ts:12  scope/unscoped-query
+  "order" is tenant-owned, but nothing in this query mentions "tenantId", so it returns rows from every tenant.
+  fix: Add tenantId to the where clause, or go through a tenant-scoped client.
+```
+
+Any other MCP client can run `npx -y bouncer-gates --mcp`, and any post-edit
+hook can pipe its event to `npx -y bouncer-gates --hook`.
+[How it works, and what it will not do](https://github.com/ajeermahmood/bouncer/blob/main/docs/agents.md).
 
 ## What it checks
 
@@ -119,6 +143,9 @@ Without a scope section, the scope check reports **skipped**, not passed.
 ```bash
 npx bouncer-gates                        # every check, whole repository
 npx bouncer-gates --init                 # write a starter config
+npx bouncer-gates --init-agents          # wire the gates into Claude Code and Cursor
+npx bouncer-gates --mcp                  # serve the gates over MCP, for any agentic editor
+npx bouncer-gates --hook                 # scan the file named by a hook event on stdin
 npx bouncer-gates --changed              # only files this branch touched
 npx bouncer-gates --only scope,money     # just some checks
 npx bouncer-gates --explain scope        # what a check does and how to excuse a case
@@ -161,8 +188,15 @@ Every rule's blind spots are listed in the
 - **Acknowledge** or **excuse**: the `bouncer-ok` comment that says a specific
   line is fine, and why.
 
+## Telemetry
+
+One anonymous ping a day: a random id, the version, the runtime, the OS and the
+Node major. Nothing about your code, ever. `BOUNCER_TELEMETRY=0` turns it off.
+[Everything it sends](https://github.com/ajeermahmood/bouncer/blob/main/docs/telemetry.md).
+
 ## More
 
+- [Inside the editor](https://github.com/ajeermahmood/bouncer/blob/main/docs/agents.md): the MCP server and the hook, what the agent sees, other editors
 - [Gate reference](https://github.com/ajeermahmood/bouncer/blob/main/docs/gates.md): every rule, a bad and a good example, what it misses
 - [Rolling it out on an existing codebase](https://github.com/ajeermahmood/bouncer/blob/main/docs/adoption.md)
 - [Design notes](https://github.com/ajeermahmood/bouncer/blob/main/docs/design-notes.md): why it never fails open, why findings never quote the secret, the false-positive story, and the speed work

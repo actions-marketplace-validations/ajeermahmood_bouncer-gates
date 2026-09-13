@@ -44,6 +44,13 @@ You want a `scope/raw-client` finding back. In the browser, the playground foote
 should read **ran on a Cloudflare Worker**. If it says **ran in this tab**, the
 endpoint is not there and the fallback is covering for it.
 
+### The usage counter
+
+`/api/ping` writes to an Analytics Engine dataset declared in `wrangler.toml`.
+It needs no provisioning. `npm run stats` with `CF_ACCOUNT_ID` and a
+`CF_API_TOKEN` that has Account Analytics: Read prints the numbers. What the
+client sends is in [telemetry.md](telemetry.md).
+
 ## Railway
 
 For teams that want the checks available over HTTP without running Node

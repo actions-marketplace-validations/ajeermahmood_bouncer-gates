@@ -1,13 +1,17 @@
 # Architecture
 
 Small enough to read in one sitting. There are three pieces: pure gates, a runner
-that does all the I/O, and four thin callers.
+that does all the I/O, and a handful of thin callers.
 
 ```
 gates/*.mjs          pure: (files) -> findings.  no fs, no git, no printing
 gates/index.mjs      the registry: what each gate needs, when it must skip
 gates/lib/           finding shape, acknowledgements, fingerprints, baseline, glob
-bin/bouncer.mjs      the runner: git, file reads, config, baseline, reporting
+bin/lib/run.mjs      the runner as a function: git, file reads, config, baseline
+bin/bouncer.mjs      the CLI: flags, printing, exit codes
+bin/lib/mcp.mjs      the same runner, served over MCP to an agentic editor
+bin/lib/agents.mjs   the post-edit hook, and the --init-agents config writer
+bin/lib/telemetry.mjs  one anonymous ping a day, see docs/telemetry.md
 shared/demo-*.mjs    the config and scan the hosted demos share
 worker/index.js      Cloudflare Worker: the API route, assets behind it
 functions/api/       the same endpoint for a Cloudflare Pages deployment
@@ -26,6 +30,8 @@ four places:
 | Caller | Runtime | Why it exists |
 |---|---|---|
 | `bin/bouncer.mjs` | Node CLI | CI, pre-commit, local |
+| `bin/bouncer.mjs --mcp` | Node, stdio | Claude Code, Cursor and any MCP client, while the file is open |
+| `bin/bouncer.mjs --hook` | Node, one shot | after every file an agent writes |
 | `worker/index.js` | Cloudflare Worker | the deployed playground; no filesystem exists there |
 | `functions/api/scan.js` | Cloudflare Pages Function | the same endpoint, for a Pages deployment |
 | `server/index.mjs` | Node service on Railway | a hosted API for teams not running Node |
@@ -91,6 +97,21 @@ It now lives in `shared/demo-scan.mjs` and `shared/demo-config.mjs`, and
 That test exists because "we share the important part" is the easy half; the
 important part is whatever actually differs between two runs, and configuration
 usually is.
+
+## The runner is a function too
+
+The CLI used to be one script that read the world, ran the gates and printed.
+When the MCP server and the hook arrived, that script became
+`bin/lib/run.mjs`, which returns a result and never prints or exits, and the
+CLI became one of three callers of it. The same reasoning that produced
+`runDemoGates` for the hosted demos applies: the part worth sharing is the ten
+lines around the gates, the try/catch and the skip handling, because the caller
+that retypes them is the one that lets a crashed gate read as a pass.
+
+Two things an editor needs that CI does not: scanning a file git does not track
+yet, because the agent just wrote it, and treating an uncommitted `.sql` as a
+new migration, because there is no base to diff it against and "new" is the
+only honest reading.
 
 ## A gate never fails open
 

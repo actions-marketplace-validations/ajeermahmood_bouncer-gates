@@ -2,6 +2,44 @@
 
 Notable changes. Dates are the day the work was done.
 
+## 0.4.0 - 2026-09-13
+
+The gates move into the editor, next to the agent writing the code.
+
+### `bouncer --init-agents`, `--mcp` and `--hook`
+
+CI sees a mistake after the pull request exists. An agentic editor can see it
+in the turn it was made. `--mcp` serves the gates over the Model Context
+Protocol on stdio, with no dependencies, so any client can call
+`bouncer_scan`, `bouncer_scan_snippet`, `bouncer_explain` and
+`bouncer_list_gates`. `--hook` reads a post-edit event on stdin, scans the one
+file it names, and exits 2 with the findings when something blocks.
+`--init-agents` writes both into `.mcp.json`, `.cursor/mcp.json` and
+`.claude/settings.json`, merging with whatever is there.
+
+Both paths report a runner failure as an error, never as "no findings", and
+list skipped gates next to the findings. An agent told the code is clean when
+the scope gate could not run would learn the wrong thing.
+
+A file handed over by an editor is scanned whether or not git tracks it yet,
+and an uncommitted `.sql` is treated as a new migration, so the migration gate
+answers inside the editor even in a clone with no base ref.
+
+### The scan is a function
+
+`bin/lib/run.mjs` is what used to be the body of the CLI: git, file reads,
+config, baseline, the gate loop with its try/catch. The CLI, the MCP server and
+the hook all call it. The moment the hook had its own copy of the loop it would
+have been the one caller that let a throwing gate read as clean.
+
+### Telemetry
+
+One anonymous ping a day: a random id, the version, the runtime, the OS and
+the Node major. Nothing about the code. `BOUNCER_TELEMETRY=0` or
+`DO_NOT_TRACK=1` turns it off, the first run says so, and
+[docs/telemetry.md](docs/telemetry.md) is the complete list. `npm run stats`
+reads the numbers back.
+
 ## 0.3.0 - 2026-09-05
 
 A precision and adoption release. The gates were read against inputs they had
