@@ -55,7 +55,7 @@ is unaffected.
 - It runs after the result has been printed and the exit code chosen.
 - Every failure is swallowed. No network, no DNS, a 500: the exit code is the
   same.
-- The request times out after 1.5 seconds.
+- The request times out after one second.
 - The gates never see it. They import nothing from `bin/`.
 
 ## Reading the numbers
