@@ -3,3 +3,4 @@ dist/
 .astro/
 .wrangler/
 *.log
+mcp-publisher.exe

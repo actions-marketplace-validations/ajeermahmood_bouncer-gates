@@ -41,7 +41,7 @@ steps:
       fetch-depth: 0             # needed so the migration check can see what is new
   - uses: ajeermahmood/bouncer@v0
     with:
-      version: "0.4.0"
+      version: "0.4.1"
 ```
 
 That is the whole setup. Everything below is detail.

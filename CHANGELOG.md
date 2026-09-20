@@ -2,6 +2,16 @@
 
 Notable changes. Dates are the day the work was done.
 
+## 0.4.1 - 2026-09-20
+
+Listing release. No behaviour changes.
+
+`server.json` describes the MCP server for the official MCP Registry, and
+`package.json` carries the `mcpName` the registry checks to confirm the npm
+package and the listing are the same project. The listed launch command is
+`npx bouncer-gates --mcp`, because plain `npx bouncer-gates` runs the CLI once
+and exits rather than speaking MCP.
+
 ## 0.4.0 - 2026-09-13
 
 The gates move into the editor, next to the agent writing the code.

@@ -1,6 +1,7 @@
 {
   "name": "bouncer-gates",
-  "version": "0.4.0",
+  "version": "0.4.1",
+  "mcpName": "io.github.ajeermahmood/bouncer",
   "description": "CI gates that let anyone contribute to a codebase without being able to break it.",
   "type": "module",
   "license": "MIT",
