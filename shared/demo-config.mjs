@@ -28,6 +28,19 @@ export const DEMO_SCOPE_CONFIG = Object.freeze({
   tables: ["orders", "customers", "invoices", "subscriptions", "payments"],
   column: "tenantId",
   rawAccessor: "raw",
+  // Direct-client mode, so the playground demonstrates the check that applies to
+  // most codebases rather than only the one that applies to codebases which
+  // already have a tenant-scoped wrapper.
+  //
+  // This was added to the gate in 0.3.0 and not here, so for two releases the
+  // public demo quietly answered "nothing wrong" to the single most likely thing
+  // a visitor would paste:
+  //
+  //     prisma.order.findMany({ where: { status: "paid" } })
+  //
+  // The gate was right and the demo was misconfigured, which is the worse of the
+  // two: a visitor concludes the tool does not catch much and leaves.
+  clients: ["prisma", "db"],
 });
 
 /**

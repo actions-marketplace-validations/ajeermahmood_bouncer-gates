@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { runDemoGates } from "../shared/demo-scan.mjs";
 import { DEMO_SCOPE_CONFIG, UNAVAILABLE, MAX_SNIPPET_BYTES } from "../shared/demo-config.mjs";
+import { DEFAULTS } from "../gates/scope.mjs";
 
 const ROOT = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 
@@ -93,5 +94,34 @@ describe("no hosted caller reimplements the scan", () => {
     // try/catch and the sort before this was factored out.
     const text = readFileSync(join(ROOT, file), "utf8");
     expect(text).not.toMatch(/from "[./]*gates\/(?:secrets|scope|money)\.mjs"/);
+  });
+});
+
+describe("the demo config keeps up with the gates", () => {
+  it("demonstrates the scope check that applies without a scoped client", () => {
+    // Direct-client mode landed in the gate in 0.3.0 and was not added here, so
+    // for two releases the public playground answered "nothing wrong" to the
+    // single most likely thing a visitor would paste. The gate was right; the
+    // demo was misconfigured, which is worse, because the visitor concludes the
+    // tool is weak and leaves.
+    const { findings } = runDemoGates('const a = await prisma.order.findMany({ where: { status: "paid" } });');
+    expect(findings.map((f) => f.rule)).toContain("scope/unscoped-query");
+  });
+
+  it("stays quiet when the pasted query is properly scoped", () => {
+    const { findings } = runDemoGates(
+      'const a = await prisma.order.findMany({ where: { tenantId, status: "paid" } });'
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it("exercises every configurable key the scope gate reads", () => {
+    // A cheap guard against the same drift happening again: if the gate grows a
+    // new configurable behaviour, this fails until the demo config decides
+    // whether to show it off.
+    const configurable = Object.keys(DEFAULTS).filter((k) => k !== "queryMethods" && k !== "rawSqlCalls");
+    for (const key of configurable) {
+      expect(Object.keys(DEMO_SCOPE_CONFIG)).toContain(key);
+    }
   });
 });
