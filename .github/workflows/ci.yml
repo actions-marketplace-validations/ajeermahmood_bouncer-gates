@@ -43,23 +43,23 @@ jobs:
       # Gates first. They are the fastest thing here and the most likely to fail,
       # and a contributor should not wait through a build to be told about a
       # hardcoded password on line 3.
-      - name: Bouncer
-        run: node bin/bouncer.mjs --base origin/${{ github.base_ref || 'main' }}
+      - name: bouncer-gates
+        run: node bin/bouncer-gates.mjs --base origin/${{ github.base_ref || 'main' }}
 
       # Runs even when the gates failed, so the PR comment and the Security tab
       # can explain what happened instead of leaving a red X and a link to a log.
       - name: Collect findings
         if: always()
         run: |
-          node bin/bouncer.mjs --json  --base origin/${{ github.base_ref || 'main' }} > findings.json || true
-          node bin/bouncer.mjs --sarif --base origin/${{ github.base_ref || 'main' }} > bouncer.sarif || true
+          node bin/bouncer-gates.mjs --json  --base origin/${{ github.base_ref || 'main' }} > findings.json || true
+          node bin/bouncer-gates.mjs --sarif --base origin/${{ github.base_ref || 'main' }} > bouncer-gates.sarif || true
 
       - name: Upload to code scanning
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: bouncer.sarif
-          category: bouncer
+          sarif_file: bouncer-gates.sarif
+          category: bouncer-gates
         continue-on-error: true
 
       - name: Explain on the PR
@@ -86,7 +86,7 @@ jobs:
             if (!errors.length) return;
 
             const body = [
-              '**Bouncer stopped this one at the door.**',
+              '**bouncer-gates stopped this one at the door.**',
               '',
               'Nothing here is a judgement about the change. These are the specific',
               'mistakes that are expensive to find later, so we check them every time.',
@@ -106,14 +106,14 @@ jobs:
               '---',
               'If one of these is wrong for a good reason, write the reason in the code:',
               '```',
-              '// bouncer-ok(<gate>): why this is fine here',
+              '// bouncer-gates-ok(<gate>): why this is fine here',
               '```',
               'The reason is required, and it stays in the file where the next person will read it.',
             ].join('\n');
 
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
-            const marker = '<!-- bouncer -->';
+            const marker = '<!-- bouncer-gates -->';
 
             // Update one comment rather than adding a new one per push, so the
             // conversation stays readable on a branch that takes ten commits.
@@ -145,7 +145,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: node bin/bouncer.mjs --no-baseline
+      - run: node bin/bouncer-gates.mjs --no-baseline
 
   build:
     name: Build site

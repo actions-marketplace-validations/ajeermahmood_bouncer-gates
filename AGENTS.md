@@ -4,7 +4,7 @@ Read this before changing anything. It is short on purpose.
 
 ## What this repository is
 
-Bouncer is a set of CI gates. Each gate is a pure function that takes files and
+bouncer-gates is a set of CI gates. Each gate is a pure function that takes files and
 returns findings. The gates are the product; the website in `src/` is
 documentation for them.
 
@@ -52,7 +52,7 @@ A gate imports from `./lib/finding.mjs` and nothing else. No `node:fs`, no
 
 This is not style. The same functions run in four places:
 
-- `bin/bouncer.mjs`, the CLI, which reads from disk through `bin/lib/run.mjs`
+- `bin/bouncer-gates.mjs`, the CLI, which reads from disk through `bin/lib/run.mjs`
 - `bin/lib/mcp.mjs` and `bin/lib/agents.mjs`, the MCP server and editor hook, same runner
 - `functions/api/scan.js`, a Cloudflare Worker, where no filesystem exists
 - `server/index.mjs`, a Node service on Railway
@@ -69,7 +69,7 @@ month on a real team.
 When you touch a matcher, run it against a real codebase before you ship it:
 
 ```bash
-node bin/bouncer.mjs --only <gate> --root ../some-real-repo
+node bin/bouncer-gates.mjs --only <gate> --root ../some-real-repo
 ```
 
 Read every finding. If more than a handful are wrong, the rule is too broad.
@@ -106,10 +106,10 @@ the part where it tells you the rule should not be a gate at all.
 Every gate honours a comment on the offending line or the line above:
 
 ```
-// bouncer-ok(scope): admin dashboard reports across all tenants by design
+// bouncer-gates-ok(scope): admin dashboard reports across all tenants by design
 ```
 
-The reason is required. A bare `bouncer-ok(scope):` suppresses nothing. That is
+The reason is required. A bare `bouncer-gates-ok(scope):` suppresses nothing. That is
 the whole design: easy to use, impossible to use silently, and the justification
 ends up in the file where the next reader finds it.
 
@@ -128,7 +128,7 @@ quietly.
   comments are skipped for this reason. Use `isCommentLine`.
 - **Control characters in source.** An early glob compiler used NUL as a
   placeholder token. It worked, and it made the file read as binary to `grep` and
-  to Bouncer's own file reader, so the tool could not scan its own runner.
+  to bouncer-gates's own file reader, so the tool could not scan its own runner.
 - **Regex-heavy edits through a shell heredoc.** Doubled backslashes get eaten and
   the result is a regex that silently matches the wrong thing. Write the file
   directly.

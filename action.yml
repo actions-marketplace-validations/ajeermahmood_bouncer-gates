@@ -1,4 +1,4 @@
-name: "Bouncer gates"
+name: "bouncer-gates"
 description: "CI gates that block expensive mistakes before they merge: secrets, tenant scope, money maths, migrations, dead links."
 author: "Ajeer Mohammed"
 
@@ -34,7 +34,7 @@ inputs:
   sarif-file:
     description: "Where to write the SARIF file."
     required: false
-    default: "bouncer.sarif"
+    default: "bouncer-gates.sarif"
   root:
     description: "Repository root to scan, relative to the workspace."
     required: false
@@ -54,7 +54,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Run bouncer
+    - name: Run bouncer-gates
       id: gates
       shell: bash
       env:
@@ -96,8 +96,8 @@ runs:
 
         # Machine outputs are written even when the gates failed, so a later step
         # can explain the failure on the PR instead of leaving a red X and a log.
-        npx --yes "$pkg" "${args[@]}" --json > bouncer-findings.json || true
-        echo "findings-file=bouncer-findings.json" >> "$GITHUB_OUTPUT"
+        npx --yes "$pkg" "${args[@]}" --json > bouncer-gates-findings.json || true
+        echo "findings-file=bouncer-gates-findings.json" >> "$GITHUB_OUTPUT"
 
         if [ "$INPUT_SARIF" = "true" ]; then
           npx --yes "$pkg" "${args[@]}" --sarif > "$INPUT_SARIF_FILE" || true
@@ -109,6 +109,6 @@ runs:
         # Exit 2 is the tool failing, not the code. Both stop the merge, but a
         # reader of the log should not confuse a broken runner with a broken PR.
         if [ "$code" -eq 2 ]; then
-          echo "::error::bouncer could not do its job (exit 2). This is a runner problem, not a finding."
+          echo "::error::bouncer-gates could not do its job (exit 2). This is a runner problem, not a finding."
         fi
         exit "$code"

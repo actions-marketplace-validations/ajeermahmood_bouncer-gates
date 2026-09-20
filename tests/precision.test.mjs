@@ -189,7 +189,7 @@ describe("scope, direct client mode", () => {
   });
 
   it("honours an acknowledgement", () => {
-    const text = ["// bouncer-ok(scope): nightly revenue report spans every tenant by design", "const all = await prisma.order.findMany();"].join("\n");
+    const text = ["// bouncer-gates-ok(scope): nightly revenue report spans every tenant by design", "const all = await prisma.order.findMany();"].join("\n");
     expect(scope.scan(at("s.ts", text), cfg)).toHaveLength(0);
   });
 });
@@ -264,8 +264,8 @@ describe("--init helpers", () => {
   });
 
   it("turns a git remote into a browsable URL", () => {
-    expect(repoUrlFromRemote("git@github.com:ajeermahmood/bouncer.git")).toBe("https://github.com/ajeermahmood/bouncer");
-    expect(repoUrlFromRemote("https://github.com/ajeermahmood/bouncer.git\n")).toBe("https://github.com/ajeermahmood/bouncer");
+    expect(repoUrlFromRemote("git@github.com:ajeermahmood/bouncer-gates.git")).toBe("https://github.com/ajeermahmood/bouncer-gates");
+    expect(repoUrlFromRemote("https://github.com/ajeermahmood/bouncer-gates.git\n")).toBe("https://github.com/ajeermahmood/bouncer-gates");
     expect(repoUrlFromRemote("")).toBe("");
   });
 });

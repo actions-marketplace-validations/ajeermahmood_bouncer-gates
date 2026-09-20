@@ -5,9 +5,9 @@
  * the baseline. The gates stay pure. What used to be the body of the CLI is now
  * something three callers share:
  *
- *   bin/bouncer.mjs            the CLI, which prints and picks an exit code
- *   bin/bouncer.mjs --mcp      the MCP server an agentic editor talks to
- *   bin/bouncer.mjs --hook     the post-edit hook Claude Code and friends run
+ *   bin/bouncer-gates.mjs            the CLI, which prints and picks an exit code
+ *   bin/bouncer-gates.mjs --mcp      the MCP server an agentic editor talks to
+ *   bin/bouncer-gates.mjs --hook     the post-edit hook Claude Code and friends run
  *
  * The same rule that made the hosted demos share `runDemoGates` applies here.
  * The moment the hook grew its own copy of the gate loop it would have been the
@@ -25,7 +25,18 @@ import { lines } from "../../gates/lib/finding.mjs";
 import { globToRe } from "../../gates/lib/glob.mjs";
 import { fingerprintAll, applyBaseline, validateBaseline } from "../../gates/lib/baseline.mjs";
 
-export const VERSION = "0.4.0";
+/**
+ * Read from package.json rather than written down here.
+ *
+ * This was a second source of truth and it had already drifted: package.json
+ * said 0.4.1 while this still said 0.4.0, so `--version`, the SARIF driver
+ * version and the MCP handshake all reported a release that was two behind.
+ * Nothing failed, which is why nobody noticed. package.json ships inside the
+ * npm package, so this resolves for an installed copy too.
+ */
+export const VERSION = JSON.parse(
+  readFileSync(new URL("../../package.json", import.meta.url), "utf8")
+).version;
 
 /** The runner could not do its job. Maps to exit 2 in the CLI. */
 export class RunnerError extends Error {}
@@ -127,8 +138,8 @@ function resolveBase(root, base, baseGiven) {
  * @property {string[]} [only]        gate names to run
  * @property {string[]} [paths]       only these files, tracked or not. For an editor
  *                                    hook scanning the file that was just written.
- * @property {boolean} [noBaseline]   ignore bouncer.baseline.json
- * @property {object} [config]        parsed bouncer.config.json; read from root if absent
+ * @property {boolean} [noBaseline]   ignore bouncer-gates.baseline.json
+ * @property {object} [config]        parsed bouncer-gates.config.json; read from root if absent
  * @property {{path: string, text: string}[]} [snippets]
  *                                    in-memory files, scanned with the repository's
  *                                    config. For an agent asking about code it has
@@ -151,7 +162,7 @@ function buildContext(opts, gates, config) {
   if (!tracked.length && !snippets.size) {
     throw new RunnerError(
       `no tracked files found in ${root}.\n` +
-        `Bouncer reads the file list from git, so it runs on what is committed rather ` +
+        `bouncer-gates reads the file list from git, so it runs on what is committed rather ` +
         `than whatever is lying in the directory. Run it inside a git repository.`
     );
   }
@@ -166,7 +177,7 @@ function buildContext(opts, gates, config) {
   // for: test fixtures and playground examples are hardcoded secrets and
   // cross-tenant queries on purpose. So exclusion has to exist.
   //
-  // What matters is that it is loud. These are declared in bouncer.config.json,
+  // What matters is that it is loud. These are declared in bouncer-gates.config.json,
   // never inferred, and the runner prints how many files each pattern removed on
   // every run. An exclude list that silently grows to cover half the codebase is
   // the most likely way a setup like this rots.
@@ -301,7 +312,7 @@ function buildContext(opts, gates, config) {
  */
 export function runGates(opts) {
   const root = resolve(opts.root ?? process.cwd());
-  const config = opts.config ?? loadJson(join(root, "bouncer.config.json"), "bouncer.config.json") ?? {};
+  const config = opts.config ?? loadJson(join(root, "bouncer-gates.config.json"), "bouncer-gates.config.json") ?? {};
   const only = opts.only ?? [];
   const selected = only.length ? GATES.filter((g) => only.includes(g.name)) : GATES;
   if (only.length) {
@@ -345,12 +356,12 @@ export function runGates(opts) {
 
   let grandfathered = [];
   let stale = [];
-  const baselinePath = join(root, "bouncer.baseline.json");
+  const baselinePath = join(root, "bouncer-gates.baseline.json");
   if (!opts.noBaseline) {
-    const baseline = loadJson(baselinePath, "bouncer.baseline.json");
+    const baseline = loadJson(baselinePath, "bouncer-gates.baseline.json");
     if (baseline) {
       const problem = validateBaseline(baseline);
-      if (problem) throw new RunnerError(`bouncer.baseline.json: ${problem}`);
+      if (problem) throw new RunnerError(`bouncer-gates.baseline.json: ${problem}`);
       const split = applyBaseline(all, baseline);
       all = split.blocking;
       grandfathered = split.grandfathered;
@@ -415,16 +426,16 @@ export function toText(run, { header = true } = {}) {
   if (header) {
     if (run.errorCount || run.crashed) {
       out.push(
-        `Bouncer found ${run.errorCount} blocking finding${run.errorCount === 1 ? "" : "s"}` +
+        `bouncer-gates found ${run.errorCount} blocking finding${run.errorCount === 1 ? "" : "s"}` +
           (run.crashed ? " and a gate crashed" : "") +
           ". Fix each one, or if it is deliberate, add a comment on that line or the line above:"
       );
-      out.push("  // bouncer-ok(<gate>): <why this is fine here>");
+      out.push("  // bouncer-gates-ok(<gate>): <why this is fine here>");
       out.push("The reason is required. A bare marker suppresses nothing.");
     } else if (run.all.length) {
-      out.push(`Bouncer has ${run.all.length} warning${run.all.length === 1 ? "" : "s"}. None blocks a merge.`);
+      out.push(`bouncer-gates has ${run.all.length} warning${run.all.length === 1 ? "" : "s"}. None blocks a merge.`);
     } else {
-      out.push("Bouncer found nothing.");
+      out.push("bouncer-gates found nothing.");
     }
   }
   for (const r of shown) {

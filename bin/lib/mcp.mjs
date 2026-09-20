@@ -1,5 +1,5 @@
 /**
- * Bouncer as an MCP server, over stdio.
+ * bouncer-gates as an MCP server, over stdio.
  *
  * This is where the gates meet the agent that is writing the code. CI runs
  * after the pull request exists; this runs while the file is still open. Claude
@@ -26,26 +26,26 @@ import { runGates, toJson, toText, RunnerError, VERSION } from "./run.mjs";
 const PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 export const INSTRUCTIONS = [
-  "Bouncer checks code for the mistakes that are expensive to find later: committed",
+  "bouncer-gates checks code for the mistakes that are expensive to find later: committed",
   "secrets, multi-tenant queries with no tenant filter, float maths on money, SQL",
   "migrations that break the running app, and dead links in markdown.",
   "",
-  "Before you finish a task, call bouncer_scan with the files you changed. Fix every",
+  "Before you finish a task, call bouncer_gates_scan with the files you changed. Fix every",
   "blocking finding. If a finding is wrong for a reason you can state, put that",
   "reason on the line above it:",
   "",
-  "  // bouncer-ok(<gate>): <why this is fine here>",
+  "  // bouncer-gates-ok(<gate>): <why this is fine here>",
   "",
   "The reason is required and is read by humans; never write a vague one. Do not",
-  "edit bouncer.config.json or bouncer.baseline.json to make a finding go away.",
+  "edit bouncer-gates.config.json or bouncer-gates.baseline.json to make a finding go away.",
   "A gate reported as skipped did not look; it is not a pass.",
 ].join("\n");
 
 const TOOLS = [
   {
-    name: "bouncer_scan",
+    name: "bouncer_gates_scan",
     description:
-      "Run the Bouncer gates on files in the repository. With `paths`, scans only those files, " +
+      "Run the bouncer-gates checks on files in the repository. With `paths`, scans only those files, " +
       "whether or not git tracks them yet. Without `paths`, scans the whole repository, or only " +
       "changed files when `changed` is true. Returns findings with a file, line, rule, message and fix, " +
       "plus any gate that could not run and why.",
@@ -71,9 +71,9 @@ const TOOLS = [
     },
   },
   {
-    name: "bouncer_scan_snippet",
+    name: "bouncer_gates_scan_snippet",
     description:
-      "Run the Bouncer gates on code that is not on disk yet, using this repository's configuration. " +
+      "Run the bouncer-gates checks on code that is not on disk yet, using this repository's configuration. " +
       "Give the filename it will have, because the extension decides which gates apply.",
     inputSchema: {
       type: "object",
@@ -89,7 +89,7 @@ const TOOLS = [
     },
   },
   {
-    name: "bouncer_explain",
+    name: "bouncer_gates_explain",
     description: "What one gate checks, what it deliberately does not catch, and how to excuse one line.",
     inputSchema: {
       type: "object",
@@ -101,7 +101,7 @@ const TOOLS = [
     },
   },
   {
-    name: "bouncer_list_gates",
+    name: "bouncer_gates_list_gates",
     description: "The gates this server runs, with one line each.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
@@ -116,10 +116,10 @@ function explain(name) {
     gate.summary,
     "",
     "To excuse one line, put a comment on it or the line above it:",
-    `  // bouncer-ok(${gate.name}): <why this is fine here>`,
+    `  // bouncer-gates-ok(${gate.name}): <why this is fine here>`,
     "The reason is required. A bare marker suppresses nothing.",
     "",
-    `Full reference, including what it misses: https://github.com/ajeermahmood/bouncer/blob/main/docs/gates.md#${gate.name}`,
+    `Full reference, including what it misses: https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/gates.md#${gate.name}`,
   ].join("\n");
 }
 
@@ -131,11 +131,11 @@ export function callTool(name, args = {}, { root, base }) {
   const text = (t, extra = {}) => ({ content: [{ type: "text", text: t }], ...extra });
   try {
     switch (name) {
-      case "bouncer_list_gates":
+      case "bouncer_gates_list_gates":
         return text(GATES.map((g) => `${g.name}: ${g.summary}`).join("\n"));
-      case "bouncer_explain":
+      case "bouncer_gates_explain":
         return text(explain(String(args.gate ?? "")));
-      case "bouncer_scan": {
+      case "bouncer_gates_scan": {
         const paths = Array.isArray(args.paths) && args.paths.length ? args.paths.map(String) : undefined;
         const run = runGates({
           root,
@@ -147,7 +147,7 @@ export function callTool(name, args = {}, { root, base }) {
         });
         return text(toText(run), { structuredContent: toJson(run), isError: run.crashed });
       }
-      case "bouncer_scan_snippet": {
+      case "bouncer_gates_scan_snippet": {
         const run = runGates({
           root,
           base,
@@ -162,8 +162,8 @@ export function callTool(name, args = {}, { root, base }) {
   } catch (e) {
     // A runner that cannot do its job says so in the result, as an error. It must
     // never come back as "no findings". That is the same rule as exit code 2.
-    const msg = e instanceof RunnerError ? e.message : `bouncer crashed: ${e.stack ?? e.message}`;
-    return text(`Bouncer could not run, so nothing was checked. ${msg}`, { isError: true });
+    const msg = e instanceof RunnerError ? e.message : `bouncer-gates crashed: ${e.stack ?? e.message}`;
+    return text(`bouncer-gates could not run, so nothing was checked. ${msg}`, { isError: true });
   }
 }
 
@@ -184,7 +184,7 @@ export function handleMessage(msg, opts) {
       return reply({
         protocolVersion,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "bouncer", version: VERSION },
+        serverInfo: { name: "bouncer-gates", version: VERSION },
         instructions: INSTRUCTIONS,
       });
     }
@@ -222,5 +222,5 @@ export function serve(opts) {
     }
   });
   rl.on("close", () => process.exit(0));
-  process.stderr.write(`bouncer mcp ${VERSION} ready (root: ${opts.root})\n`);
+  process.stderr.write(`bouncer-gates mcp ${VERSION} ready (root: ${opts.root})\n`);
 }

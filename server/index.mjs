@@ -2,7 +2,7 @@
  * The same gates, as a plain Node service. Deployed on Railway.
  *
  * This exists to make one point precisely. `functions/api/scan.js` is a
- * Cloudflare Worker, `bin/bouncer.mjs` is a CLI, `Playground.tsx` runs them in a
+ * Cloudflare Worker, `bin/bouncer-gates.mjs` is a CLI, `Playground.tsx` runs them in a
  * browser tab, and this is a long-lived Node process. Four runtimes, four
  * deployment models, and not one line of duplicated rule logic between them.
  *
@@ -86,5 +86,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  process.stdout.write(`bouncer api listening on ${PORT}\n`);
+  process.stdout.write(`bouncer-gates api listening on ${PORT}\n`);
 });

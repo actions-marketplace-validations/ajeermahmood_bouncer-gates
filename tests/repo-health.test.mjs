@@ -50,7 +50,7 @@ describe("repository health", () => {
 
 describe("globToRe", () => {
   // Lives in gates/lib so it can be tested at all. It used to be exported from
-  // bin/bouncer.mjs, which runs the entire CLI at import time, so importing it
+  // bin/bouncer-gates.mjs, which runs the entire CLI at import time, so importing it
   // to test it would have executed a scan and called process.exit.
   const matches = (pattern, path) => globToRe(pattern).test(path);
 
@@ -82,5 +82,58 @@ describe("globToRe", () => {
   it("supports ? as a single non-slash character", () => {
     expect(matches("a?.ts", "ab.ts")).toBe(true);
     expect(matches("a?.ts", "a/.ts")).toBe(false);
+  });
+});
+
+describe("telemetry transport", () => {
+  const source = readFileSync(join(ROOT, "bin/lib/telemetry.mjs"), "utf8");
+
+  it("does not send the ping with fetch", () => {
+    // Node's fetch is undici, which keeps the socket pooled after the response.
+    // The runner calls process.exit() straight after the ping, and tearing that
+    // pooled handle down mid-close trips a libuv assertion on Windows:
+    //
+    //   Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\win\async.c
+    //
+    // The scan had already finished and printed correctly, so the tool looked
+    // like it crashed at the end of a successful run. Only on a FIRST run,
+    // because the daily throttle silences later ones, which is precisely the
+    // run where somebody is deciding whether to trust this thing.
+    //
+    // `node:https` with `agent: false` gives the request its own socket and
+    // closes it with the response. Do not put fetch back.
+    expect(source).not.toMatch(/globalThis\.fetch/);
+    expect(source).toMatch(/from "node:https"/);
+    expect(source).toMatch(/agent:\s*false/);
+  });
+
+  it("still lets a test inject its own transport", () => {
+    // The deps.fetch hook is how every other telemetry test drives this
+    // without touching the network, so it has to survive the change above.
+    expect(source).toMatch(/deps\.fetch/);
+  });
+});
+
+describe("one version, not three", () => {
+  it("reports package.json's version from the CLI, SARIF and MCP", async () => {
+    // These used to be two constants. package.json said 0.4.1 while
+    // bin/lib/run.mjs still said 0.4.0, so --version, the SARIF driver version
+    // and the MCP handshake all claimed a release two behind. Nothing failed,
+    // which is exactly why it went unnoticed for two releases.
+    const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+    const { VERSION } = await import("../bin/lib/run.mjs");
+    expect(VERSION).toBe(pkg.version);
+  });
+
+  it("keeps server.json in step with package.json", () => {
+    // The MCP registry listing names a version and an npm version. If either
+    // drifts, the listing points at a package that does not exist yet.
+    const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+    const server = JSON.parse(readFileSync(join(ROOT, "server.json"), "utf8"));
+    expect(server.version).toBe(pkg.version);
+    expect(server.packages[0].version).toBe(pkg.version);
+    expect(server.packages[0].identifier).toBe(pkg.name);
+    // The registry verifies ownership by matching this against the package.
+    expect(server.name).toBe(pkg.mcpName);
   });
 });

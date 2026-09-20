@@ -44,7 +44,7 @@ export const GATES = [
     run: (ctx, cfg) => scope.scan(ctx.source, cfg.scope),
     skipWhen: (ctx, cfg) =>
       !cfg?.scope?.models?.length && !cfg?.scope?.tables?.length
-        ? "no tenant-owned models configured, see bouncer.config.json"
+        ? "no tenant-owned models configured, see bouncer-gates.config.json"
         : null,
   },
   {

@@ -8,7 +8,7 @@
 # convention. That file is kept for anyone deploying this to Pages instead, and
 # both entries import the same gate modules.
 
-name = "bouncer"
+name = "bouncer-gates"
 main = "worker/index.js"
 compatibility_date = "2026-01-01"
 
@@ -25,4 +25,4 @@ not_found_handling = "404-page"
 # error 10089. After that the dataset appears on first write. Query it with `node tools/stats.mjs`.
 [[analytics_engine_datasets]]
 binding = "PINGS"
-dataset = "bouncer_pings"
+dataset = "bouncer_gates_pings"

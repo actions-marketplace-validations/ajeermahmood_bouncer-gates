@@ -1,6 +1,6 @@
 ---
 name: new-gate
-description: Add a new CI gate to Bouncer correctly - decide whether the rule belongs in a gate at all, write it as a pure function, give it negative tests so it does not cry wolf, register it, and document it on the site. Use when someone says "we should check for X" or after an incident that a gate could have caught.
+description: Add a new CI gate to bouncer-gates correctly - decide whether the rule belongs in a gate at all, write it as a pure function, give it negative tests so it does not cry wolf, register it, and document it on the site. Use when someone says "we should check for X" or after an incident that a gate could have caught.
 ---
 
 # Adding a gate
@@ -84,7 +84,7 @@ not understand the rule well enough to ship it yet.
 ## Step 5 - check it against the repo before you ship it
 
 ```
-node bin/bouncer.mjs --only <name>
+node bin/bouncer-gates.mjs --only <name>
 npm test
 ```
 

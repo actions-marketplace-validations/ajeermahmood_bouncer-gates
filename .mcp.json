@@ -1,9 +1,9 @@
 {
   "mcpServers": {
-    "bouncer": {
+    "bouncer-gates": {
       "command": "node",
       "args": [
-        "bin/bouncer.mjs",
+        "bin/bouncer-gates.mjs",
         "--mcp"
       ]
     }

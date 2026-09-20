@@ -4,7 +4,7 @@
  * The scope gate needs a list of models, and the docs have always said that
  * list should come from the schema rather than be typed by hand, because a
  * model nobody added to the config is a model nobody is checking. This is the
- * function that makes that true. `bouncer --init` calls it; it is here rather
+ * function that makes that true. `bouncer-gates --init` calls it; it is here rather
  * than in the runner so it can be tested on a string.
  *
  * A model is tenant-owned when it has a field with the configured column name.

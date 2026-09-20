@@ -3,7 +3,7 @@
 ```bash
 npm install
 npm test                        # unit tests
-npm run check                   # bouncer on itself
+npm run check                   # bouncer-gates on itself
 npm run bench -- ../some-repo   # measure against a real codebase
 npm run dev                     # the site
 ```
@@ -101,7 +101,7 @@ must not print the same message.
 ### Step 5: check it against a real codebase
 
 ```bash
-node bin/bouncer.mjs --only <name> --root ../some-real-repo
+node bin/bouncer-gates.mjs --only <name> --root ../some-real-repo
 npm test
 ```
 
@@ -132,7 +132,7 @@ picked up automatically.
   version of `doc-links` passed on Windows and silently checked almost nothing on
   Linux.
 - **Control characters in source.** An early `globToRe` used NUL as a placeholder
-  token. It worked, and it made the file read as binary to `grep` and to Bouncer's
+  token. It worked, and it made the file read as binary to `grep` and to bouncer-gates's
   own file reader, so the tool could not scan its own runner.
 - **`npm ci` needs `package-lock.json` committed.** It is.
 

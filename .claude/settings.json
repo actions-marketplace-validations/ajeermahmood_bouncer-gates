@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node bin/bouncer.mjs --hook",
+            "command": "node bin/bouncer-gates.mjs --hook",
             "timeout": 30
           }
         ]

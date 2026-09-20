@@ -33,7 +33,7 @@ import { finding, lines, acknowledged, isCommentLine, escapeRe, ERROR } from "./
  * KNOWN BLIND SPOTS, stated so nobody trusts this further than it deserves:
  *   - Interactive transactions. `db.$transaction((tx) => ...)` hands you a client
  *     bound to a variable this gate cannot follow. Cover those in review.
- *   - Whether a `bouncer-ok(scope):` reason is still TRUE months later.
+ *   - Whether a `bouncer-gates-ok(scope):` reason is still TRUE months later.
  *   - A scoped model that nobody added to the config.
  *
  * The first two need a reader who understands intent, which is what
@@ -45,7 +45,7 @@ export const title = "Tenant scope";
 export const summary =
   "Queries on tenant-owned tables that are not limited to one tenant: through the raw client, an alias of it, raw SQL, or a plain client with no tenant filter.";
 
-/** Sensible defaults for a Prisma codebase. Override in bouncer.config.json. */
+/** Sensible defaults for a Prisma codebase. Override in bouncer-gates.config.json. */
 export const DEFAULTS = {
   models: [],
   tables: [],
@@ -200,7 +200,7 @@ export function scan(files, config = {}) {
                 '" is tenant-owned, but this reads it through the unscoped client, so it can see every tenant\'s rows.',
               fix:
                 "Go through the scoped client instead. If this genuinely must span tenants " +
-                "(an admin report, a cron job), say so: // bouncer-ok(scope): <why>",
+                "(an admin report, a cron job), say so: // bouncer-gates-ok(scope): <why>",
               severity: ERROR,
             })
           );
@@ -221,7 +221,7 @@ export function scan(files, config = {}) {
                 '"' + m[1] + '" is reached through "' + alias + '", an alias for the unscoped client.',
               fix:
                 "Aliasing the raw client hides the bypass from a reader. Use the scoped " +
-                "client, or acknowledge with // bouncer-ok(scope): <why>",
+                "client, or acknowledge with // bouncer-gates-ok(scope): <why>",
               severity: ERROR,
             })
           );
@@ -249,7 +249,7 @@ export function scan(files, config = {}) {
                   "Add " +
                   c.column +
                   " to the where clause, or go through a tenant-scoped client. " +
-                  "If this must span tenants (an admin report, a cron job), say so: // bouncer-ok(scope): <why>",
+                  "If this must span tenants (an admin report, a cron job), say so: // bouncer-gates-ok(scope): <why>",
                 severity: ERROR,
               })
             );

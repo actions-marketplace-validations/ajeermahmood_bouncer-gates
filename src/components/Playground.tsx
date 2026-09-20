@@ -102,7 +102,7 @@ const PRESETS: { label: string; code: string }[] = [
       "// The escape hatch. A reason is required, and it stays in the file",
       "// where the next reader will find it.",
       "export async function adminRevenueReport() {",
-      "  // bouncer-ok(scope): finance dashboard, deliberately spans all tenants",
+      "  // bouncer-gates-ok(scope): finance dashboard, deliberately spans all tenants",
       "  return db.raw.order.aggregate({ _sum: { totalMinor: true } });",
       "}",
     ].join("\n"),

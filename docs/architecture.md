@@ -8,7 +8,7 @@ gates/*.mjs          pure: (files) -> findings.  no fs, no git, no printing
 gates/index.mjs      the registry: what each gate needs, when it must skip
 gates/lib/           finding shape, acknowledgements, fingerprints, baseline, glob
 bin/lib/run.mjs      the runner as a function: git, file reads, config, baseline
-bin/bouncer.mjs      the CLI: flags, printing, exit codes
+bin/bouncer-gates.mjs      the CLI: flags, printing, exit codes
 bin/lib/mcp.mjs      the same runner, served over MCP to an agentic editor
 bin/lib/agents.mjs   the post-edit hook, and the --init-agents config writer
 bin/lib/telemetry.mjs  one anonymous ping a day, see docs/telemetry.md
@@ -29,9 +29,9 @@ four places:
 
 | Caller | Runtime | Why it exists |
 |---|---|---|
-| `bin/bouncer.mjs` | Node CLI | CI, pre-commit, local |
-| `bin/bouncer.mjs --mcp` | Node, stdio | Claude Code, Cursor and any MCP client, while the file is open |
-| `bin/bouncer.mjs --hook` | Node, one shot | after every file an agent writes |
+| `bin/bouncer-gates.mjs` | Node CLI | CI, pre-commit, local |
+| `bin/bouncer-gates.mjs --mcp` | Node, stdio | Claude Code, Cursor and any MCP client, while the file is open |
+| `bin/bouncer-gates.mjs --hook` | Node, one shot | after every file an agent writes |
 | `worker/index.js` | Cloudflare Worker | the deployed playground; no filesystem exists there |
 | `functions/api/scan.js` | Cloudflare Pages Function | the same endpoint, for a Pages deployment |
 | `server/index.mjs` | Node service on Railway | a hosted API for teams not running Node |
@@ -161,7 +161,7 @@ has never seen the gate before, because increasingly that is who is reading it.
 the line above:
 
 ```
-// bouncer-ok(scope): finance dashboard, spans all tenants by design
+// bouncer-gates-ok(scope): finance dashboard, spans all tenants by design
 ```
 
 The trailing reason is required by the regex. A bare marker matches nothing.

@@ -1,4 +1,4 @@
-# Bouncer inside the editor
+# bouncer-gates inside the editor
 
 CI runs after the pull request exists. By then the secret is in a commit, the
 unscoped query is in three files, and the person fixing it is not the one who
@@ -18,9 +18,9 @@ writes three files into the repository and touches nothing else in them:
 
 | File | What it adds |
 |---|---|
-| `.mcp.json` | A `bouncer` MCP server. Claude Code reads this on start. |
+| `.mcp.json` | A `bouncer-gates` MCP server. Claude Code reads this on start. |
 | `.cursor/mcp.json` | The same server, where Cursor looks for it. |
-| `.claude/settings.json` | A `PostToolUse` hook on `Edit`, `Write`, `MultiEdit` and `NotebookEdit` that runs `bouncer --hook`. |
+| `.claude/settings.json` | A `PostToolUse` hook on `Edit`, `Write`, `MultiEdit` and `NotebookEdit` that runs `bouncer-gates --hook`. |
 
 Commit them. Everyone who opens the repository in either editor gets the gates
 without doing anything, and so does every agent.
@@ -33,8 +33,8 @@ After every file the agent writes, the hook scans that one file. If nothing
 blocks, it is silent. If something does, the agent gets this in the same turn:
 
 ```
-Bouncer found 1 blocking finding. Fix each one, or if it is deliberate, add a comment on that line or the line above:
-  // bouncer-ok(<gate>): <why this is fine here>
+bouncer-gates found 1 blocking finding. Fix each one, or if it is deliberate, add a comment on that line or the line above:
+  // bouncer-gates-ok(<gate>): <why this is fine here>
 The reason is required. A bare marker suppresses nothing.
 
 x src/orders.ts:12  scope/unscoped-query
@@ -57,10 +57,10 @@ output says which.
 
 | Tool | Does |
 |---|---|
-| `bouncer_scan` | Scan named files, tracked or not, or the whole repository, or only changed files. |
-| `bouncer_scan_snippet` | Scan code that is not on disk yet, with this repository's config. |
-| `bouncer_explain` | What one gate checks and how to excuse one line. |
-| `bouncer_list_gates` | The gates, one line each. |
+| `bouncer_gates_scan` | Scan named files, tracked or not, or the whole repository, or only changed files. |
+| `bouncer_gates_scan_snippet` | Scan code that is not on disk yet, with this repository's config. |
+| `bouncer_gates_explain` | What one gate checks and how to excuse one line. |
+| `bouncer_gates_list_gates` | The gates, one line each. |
 
 The server's instructions tell the agent to scan the files it changed before
 finishing, to fix blocking findings, to write a real reason if it excuses one,
@@ -71,7 +71,7 @@ and never to edit the config or the baseline to make a finding disappear.
 Any MCP client:
 
 ```json
-{ "mcpServers": { "bouncer": { "command": "npx", "args": ["-y", "bouncer-gates", "--mcp"] } } }
+{ "mcpServers": { "bouncer-gates": { "command": "npx", "args": ["-y", "bouncer-gates", "--mcp"] } } }
 ```
 
 Any post-edit hook. Pipe JSON with `file_path`, or `paths: []`, or the Claude
@@ -93,7 +93,7 @@ means "looked, and it was fine".
 - It does not replace CI. The hook sees one file at a time and the MCP server
   runs when asked. The CI run is the one that sees everything and blocks the
   merge. Run both.
-- It cannot stop an agent from writing `bouncer-ok(secrets): fine` with no
+- It cannot stop an agent from writing `bouncer-gates-ok(secrets): fine` with no
   real reason. It can make the reason mandatory and put it in the file, where a
   reviewer sees it. The `gate-review` skill in `.claude/skills/` is for that
   reviewer.
@@ -102,7 +102,7 @@ means "looked, and it was fine".
 
 In CI, a migration is "new" if it was added since the base branch. An editor
 handing over a `.sql` file that is not committed yet has no base to compare
-against, so any uncommitted `.sql` the hook or `bouncer_scan` is given is
+against, so any uncommitted `.sql` the hook or `bouncer_gates_scan` is given is
 treated as new. That is the only honest reading of a migration somebody is
 writing right now, and it means the migration gate answers inside the editor
 even in a shallow clone where the CLI would have to skip.

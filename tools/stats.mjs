@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * How many people use Bouncer, from the usage pings.
+ * How many people use bouncer-gates, from the usage pings.
  *
  * Reads the Analytics Engine dataset the Worker writes to (see worker/index.js
  * and docs/telemetry.md) through Cloudflare's SQL API and prints, per day and
@@ -29,7 +29,7 @@ const sql = `
     blob1 AS runtime,
     count(DISTINCT blob5) AS machines,
     sum(_sample_interval) AS pings
-  FROM bouncer_pings
+  FROM bouncer_gates_pings
   WHERE timestamp > now() - INTERVAL '${days}' DAY
   GROUP BY day, runtime
   ORDER BY day DESC, runtime
@@ -63,7 +63,7 @@ for (const row of data) {
 const uniq = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/analytics_engine/sql`, {
   method: "POST",
   headers: { authorization: `Bearer ${token}` },
-  body: `SELECT blob1 AS runtime, count(DISTINCT blob5) AS machines FROM bouncer_pings
+  body: `SELECT blob1 AS runtime, count(DISTINCT blob5) AS machines FROM bouncer_gates_pings
          WHERE timestamp > now() - INTERVAL '${days}' DAY AND blob5 != '' GROUP BY runtime`,
 }).then((r) => (r.ok ? r.json() : { data: [] }));
 

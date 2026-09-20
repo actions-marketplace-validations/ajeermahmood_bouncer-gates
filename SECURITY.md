@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Email **ajeermahmood@outlook.com** with "bouncer" in the subject. Please do not
+Email **ajeermahmood@outlook.com** with "bouncer-gates" in the subject. Please do not
 open a public issue for anything exploitable.
 
 Expect an acknowledgement within a few days. This is a small project maintained by
@@ -11,7 +11,7 @@ one that will not be met.
 
 ## Threat model, and what this tool is not
 
-Bouncer is a **static mechanical check**, not a security product. It matches
+bouncer-gates is a **static mechanical check**, not a security product. It matches
 shapes in text. It is one layer, and a thin one.
 
 It does **not** replace secret scanning at the provider level, dependency
@@ -26,7 +26,7 @@ not to stop an attacker who knows it is running.
 
 **Findings never contain the matched text.** A secret scanner that quotes what it
 found writes the secret into the CI log, which is usually more public and longer
-lived than the file it came from. Bouncer reports a file, a line and a rule id,
+lived than the file it came from. bouncer-gates reports a file, a line and a rule id,
 and a human opens the file.
 
 **A gate never fails open.** If a gate cannot do its job it reports *skipped* and

@@ -32,7 +32,7 @@ jobs:
           node-version: 22
 
       - name: Run the action against this repository
-        id: bouncer
+        id: bouncer-gates
         uses: ./
         with:
           version: latest
@@ -40,6 +40,6 @@ jobs:
       - name: Outputs are set
         if: always()
         run: |
-          test -s "${{ steps.bouncer.outputs.findings-file }}"
-          test -s "${{ steps.bouncer.outputs.sarif-file }}"
-          echo "exit-code=${{ steps.bouncer.outputs.exit-code }}"
+          test -s "${{ steps.bouncer-gates.outputs.findings-file }}"
+          test -s "${{ steps.bouncer-gates.outputs.sarif-file }}"
+          echo "exit-code=${{ steps.bouncer-gates.outputs.exit-code }}"

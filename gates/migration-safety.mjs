@@ -117,9 +117,9 @@ const RULES = [
  * is one unit of intent. If you have decided this migration is safe (the column
  * never shipped, the change deploys dark), you say so once at the top:
  *
- *     -- bouncer-ok(migration): add_referrals never reached production
+ *     -- bouncer-gates-ok(migration): add_referrals never reached production
  */
-const ACK = /--\s*bouncer-ok\(migration\)\s*:\s*\S+/i;
+const ACK = /--\s*bouncer-gates-ok\(migration\)\s*:\s*\S+/i;
 
 /**
  * The ADD clauses of an ALTER TABLE, each cut at the next top-level comma.

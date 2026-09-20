@@ -2,27 +2,70 @@
 
 Notable changes. Dates are the day the work was done.
 
-## 0.4.1 - 2026-09-20
+## 0.5.0 - 2026-09-20
 
-Listing release. No behaviour changes.
+**Breaking.** The project is now called `bouncer-gates` everywhere, matching the
+npm name it has always installed under. 0.4.1 was prepared and never published,
+so its listing work is folded in here.
 
-`server.json` describes the MCP server for the official MCP Registry, and
+### What you have to change
+
+| Was | Now |
+|---|---|
+| `bouncer` command | `bouncer-gates` |
+| `// bouncer-ok(scope): why` | `// bouncer-gates-ok(scope): why` |
+| `bouncer.config.json` | `bouncer-gates.config.json` |
+| `bouncer.baseline.json` | `bouncer-gates.baseline.json` |
+| MCP tools `bouncer_scan`, ... | `bouncer_gates_scan`, ... |
+| `~/.bouncer/` | `~/.bouncer-gates/` |
+
+An old `bouncer-ok` comment is not recognised and is not silently ignored: the
+finding it used to suppress comes back and blocks. That is the safe direction,
+and it is visible the first time you run it rather than months later.
+
+`npx bouncer-gates` and the `ajeermahmood/bouncer@v0` action reference both keep
+working, the second because GitHub redirects a renamed repository.
+
+### The MCP registry listing
+
+`server.json` describes the server for the official MCP Registry, and
 `package.json` carries the `mcpName` the registry checks to confirm the npm
 package and the listing are the same project. The listed launch command is
 `npx bouncer-gates --mcp`, because plain `npx bouncer-gates` runs the CLI once
 and exits rather than speaking MCP.
 
+### The first run printed a crash after a clean scan
+
+The usage ping used `fetch`, which is undici, which keeps its socket pooled
+after the response. The runner calls `process.exit()` immediately afterwards,
+and tearing that pooled handle down while it is still closing trips a libuv
+assertion on Windows:
+
+```
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file srcwinasync.c, line 76
+```
+
+The scan itself had already finished and printed correctly, so the tool looked
+like it crashed at the very end of a successful run, and exited 127. It only
+happened on a **first** run, because the daily throttle means later runs send
+nothing, which is exactly the run where somebody has just installed this and is
+deciding whether to trust it.
+
+The ping now goes through `node:https` with `agent: false`, so the request owns
+its socket and closes it with the response. Nothing about what is sent changed.
+A test asserts the transport does not go back to `fetch`.
+
 ## 0.4.0 - 2026-09-13
 
 The gates move into the editor, next to the agent writing the code.
 
-### `bouncer --init-agents`, `--mcp` and `--hook`
+### `bouncer-gates --init-agents`, `--mcp` and `--hook`
 
 CI sees a mistake after the pull request exists. An agentic editor can see it
 in the turn it was made. `--mcp` serves the gates over the Model Context
 Protocol on stdio, with no dependencies, so any client can call
-`bouncer_scan`, `bouncer_scan_snippet`, `bouncer_explain` and
-`bouncer_list_gates`. `--hook` reads a post-edit event on stdin, scans the one
+`bouncer_gates_scan`, `bouncer_gates_scan_snippet`, `bouncer_gates_explain` and
+`bouncer_gates_list_gates`. `--hook` reads a post-edit event on stdin, scans the one
 file it names, and exits 2 with the findings when something blocks.
 `--init-agents` writes both into `.mcp.json`, `.cursor/mcp.json` and
 `.claude/settings.json`, merging with whatever is there.
@@ -70,9 +113,9 @@ prisma.order.findMany({ where: { status: "paid" } })   // scope/unscoped-query
 
 Single-row lookups by id are deliberately left alone, and the reference says why.
 
-### `bouncer --init`
+### `bouncer-gates --init`
 
-Writes a starter `bouncer.config.json`. If the repository has a Prisma schema,
+Writes a starter `bouncer-gates.config.json`. If the repository has a Prisma schema,
 every model with a `tenantId` field becomes a tenant-owned model, with its
 `@@map` as the table name, and `clients` is set to `["prisma"]`. The tenant column is guessed from the schema (the owner-shaped field on the most
 models, so a schema built on `storeId` works too). The `doc-links`
@@ -144,11 +187,11 @@ one for every gate, and a plain "what it misses" list.
 ### A GitHub Action
 
 `action.yml` at the repository root, so a consumer writes
-`uses: ajeermahmood/bouncer@v0` instead of copying the npx line and the SARIF
+`uses: ajeermahmood/bouncer-gates@v0` instead of copying the npx line and the SARIF
 plumbing. It is a composite action around the npm package, not a second
 implementation: the same CLI runs, with `version` pinned by the consumer.
 
-It writes `bouncer-findings.json` and a SARIF file even when the gates fail, so
+It writes `bouncer-gates-findings.json` and a SARIF file even when the gates fail, so
 a later step can explain the failure on the PR. It exits with the CLI's own code,
 so `1` (findings) and `2` (the runner could not do its job) stay distinguishable,
 and it warns by name when the checkout is shallow, which is the one setup mistake
@@ -167,7 +210,7 @@ reading the project against its own claims.
 
 `gates/lib/finding.mjs` used **raw NUL bytes** as fingerprint separators. The
 runtime behaviour was correct, but the file was binary, and the runner skips
-binary files. So Bouncer's own core library was never scanned by any gate, for
+binary files. So bouncer-gates's own core library was never scanned by any gate, for
 several releases, and nothing in the output hinted at it.
 
 Replaced with the escape sequence for the same character, so fingerprints are
@@ -203,7 +246,7 @@ caller imports a gate directly.
 
 - The playground received the `unavailable` array and dropped it, so the page
   showed three gates' results while implying five ran.
-- `globToRe` was exported from `bin/bouncer.mjs`, which runs the whole CLI at
+- `globToRe` was exported from `bin/bouncer-gates.mjs`, which runs the whole CLI at
   import time, so it could never be tested. Moved to `gates/lib/glob.mjs` and
   covered.
 - Removed a dead `redact()` export and an unused `gateByName()`.
@@ -233,10 +276,10 @@ caller imports a gate directly.
 
 ## 0.2.2 - 2026-08-31
 
-- **The install command was wrong.** Every doc said `npx bouncer`. That name
+- **The install command was wrong.** Every doc said `npx bouncer-gates`. That name
   belongs to an unrelated package already on npm at 0.0.5, so the first command in
   the README would have downloaded and run a stranger's code. Published as
-  `bouncer-gates`; the binary it installs is still `bouncer`.
+  `bouncer-gates`; the binary it installs is still `bouncer-gates`.
 - **Added a Cloudflare Worker entry** (`worker/index.js` and `wrangler.toml`) so
   `/api/scan` exists on a Workers deployment. `functions/api/scan.js` is the Pages
   convention and Workers ignores it, so the first deployment served the static 404
@@ -311,12 +354,12 @@ three families.
   repository root, and no longer carries regex state between files.
 - New migration rules: `migration/set-not-null` and `migration/validated-fk`.
 - Removed NUL bytes used as placeholder tokens in the runner's glob compiler. They
-  worked, and they made the file read as binary to `grep` and to Bouncer's own
+  worked, and they made the file read as binary to `grep` and to bouncer-gates's own
   file reader, so the tool could not scan its own runner.
 
 ### Features
 
-- **`--baseline-write` and `bouncer.baseline.json`.** Grandfather what a codebase
+- **`--baseline-write` and `bouncer-gates.baseline.json`.** Grandfather what a codebase
   already has so a gate can be switched on without fixing two hundred things
   first. Fingerprints are content-based, not line-based, so a grandfathered
   finding survives code moving and starts blocking again the moment its line is

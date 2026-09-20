@@ -10,12 +10,12 @@ import react from "@astrojs/react";
  * `functions/api/scan.js`, picked up by convention. Either way the pages stay
  * static and exactly one endpoint runs code.
  *
- * That endpoint imports the same files `bin/bouncer.mjs` imports. There is no
+ * That endpoint imports the same files `bin/bouncer-gates.mjs` imports. There is no
  * browser reimplementation of the rules to drift out of sync with the real ones,
  * which was the main risk in putting a demo on the site at all.
  */
 export default defineConfig({
-  site: "https://bouncer.ajeermdk001.workers.dev",
+  site: "https://bouncer-gates.ajeermdk001.workers.dev",
   integrations: [react()],
   build: { inlineStylesheets: "auto" },
   vite: {

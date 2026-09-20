@@ -1,6 +1,6 @@
 # Telemetry
 
-Bouncer sends one anonymous ping a day so the project can tell whether anyone
+bouncer-gates sends one anonymous ping a day so the project can tell whether anyone
 uses it. This page is the complete description. If anything the tool sends is
 not listed here, that is a bug, and a serious one for a tool whose job is not
 leaking things.
@@ -16,8 +16,8 @@ finished:
 
 | Field | What it is |
 |---|---|
-| `id` | A random string generated once and stored in `~/.bouncer/id`. It is not derived from your machine, user, or anything else. Delete the file and you are a new id. |
-| `version` | The Bouncer version. |
+| `id` | A random string generated once and stored in `~/.bouncer-gates/id`. It is not derived from your machine, user, or anything else. Delete the file and you are a new id. |
+| `version` | The bouncer-gates version. |
 | `runtime` | `cli`, `mcp` (an agentic editor), `hook` (a post-edit hook), or `ci`. |
 | `os` | `process.platform`, such as `linux` or `win32`. |
 | `node` | The major Node version. |

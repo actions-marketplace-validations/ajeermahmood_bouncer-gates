@@ -9,7 +9,7 @@
 ## Checklist
 
 - [ ] `npm test` passes
-- [ ] `npm run check` passes (bouncer on itself)
+- [ ] `npm run check` passes (bouncer-gates on itself)
 - [ ] `npm run build` passes
 
 If this adds or changes a gate:

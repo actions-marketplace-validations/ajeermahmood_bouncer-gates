@@ -1,15 +1,15 @@
 /**
- * The two ways an agentic editor gets Bouncer: a hook and a config writer.
+ * The two ways an agentic editor gets bouncer-gates: a hook and a config writer.
  *
  * The hook is the cheapest integration there is. Claude Code, Cursor and the
  * other agentic editors can run a command after every file write and hand the
- * model whatever it prints on a non-zero exit. So `bouncer --hook` reads the
+ * model whatever it prints on a non-zero exit. So `bouncer-gates --hook` reads the
  * event on stdin, scans the one file that changed, and if anything blocks it
  * prints the findings and exits 2. The model sees the finding and the fix in
  * the same turn it wrote the bug, which is the earliest anything can catch it.
  *
  * Only exit 2 carries a message back to the model in Claude Code, so both "the
- * file has a blocking finding" and "bouncer could not run" use it. Those are
+ * file has a blocking finding" and "bouncer-gates could not run" use it. Those are
  * different messages, and both are worth interrupting for. What must never
  * happen is exit 0 because the runner broke.
  */
@@ -55,7 +55,7 @@ export function hook(stdinText, { root, base }) {
   try {
     event = stdinText.trim() ? JSON.parse(stdinText) : {};
   } catch (e) {
-    return { code: 2, message: `bouncer hook: stdin was not JSON (${e.message}). Nothing was checked.\n` };
+    return { code: 2, message: `bouncer-gates hook: stdin was not JSON (${e.message}). Nothing was checked.\n` };
   }
   const paths = pathsFromEvent(event);
   if (!paths.length) return { code: 0, message: "" };
@@ -69,7 +69,7 @@ export function hook(stdinText, { root, base }) {
     run = runGates({ root, base, baseGiven: Boolean(base), paths: inside });
   } catch (e) {
     const msg = e instanceof RunnerError ? e.message : e.stack ?? String(e);
-    return { code: 2, message: `bouncer could not run, so ${inside.join(", ")} was NOT checked: ${msg}\n` };
+    return { code: 2, message: `bouncer-gates could not run, so ${inside.join(", ")} was NOT checked: ${msg}\n` };
   }
   if (run.errorCount || run.crashed) return { code: 2, message: toText(run) };
   return { code: 0, message: "" };
@@ -93,7 +93,7 @@ function writeJson(path, obj) {
 }
 
 /**
- * Write the editor config that wires Bouncer in, merging into what exists.
+ * Write the editor config that wires bouncer-gates in, merging into what exists.
  *
  * Two files, both in the repository so every contributor and every agent on
  * the project gets the same guardrails without doing anything:
@@ -102,7 +102,7 @@ function writeJson(path, obj) {
  *                             Cursor reads the same shape from .cursor/mcp.json.
  *   .claude/settings.json     a PostToolUse hook on Edit and Write.
  *
- * Nothing already in those files is touched. If Bouncer is already there,
+ * Nothing already in those files is touched. If bouncer-gates is already there,
  * nothing is written and the output says so.
  *
  * @returns {string[]} lines to print
@@ -113,11 +113,11 @@ export function initAgents(root, { cursor = true } = {}) {
   const mcpPath = join(root, ".mcp.json");
   const mcp = readJsonOr(mcpPath, {});
   mcp.mcpServers ??= {};
-  if (mcp.mcpServers.bouncer) out.push("  .mcp.json already has a bouncer server, left as is");
+  if (mcp.mcpServers["bouncer-gates"]) out.push("  .mcp.json already has a bouncer-gates server, left as is");
   else {
-    mcp.mcpServers.bouncer = MCP_SERVER;
+    mcp.mcpServers["bouncer-gates"] = MCP_SERVER;
     writeJson(mcpPath, mcp);
-    out.push("  .mcp.json: added the bouncer MCP server (Claude Code picks this up on next start)");
+    out.push("  .mcp.json: added the bouncer-gates MCP server (Claude Code picks this up on next start)");
   }
 
   // Cursor's config only goes where Cursor is already in use. Creating a
@@ -128,11 +128,11 @@ export function initAgents(root, { cursor = true } = {}) {
     const cursorPath = join(cursorDir, "mcp.json");
     const c = readJsonOr(cursorPath, {});
     c.mcpServers ??= {};
-    if (c.mcpServers.bouncer) out.push("  .cursor/mcp.json already has a bouncer server, left as is");
+    if (c.mcpServers["bouncer-gates"]) out.push("  .cursor/mcp.json already has a bouncer-gates server, left as is");
     else {
-      c.mcpServers.bouncer = MCP_SERVER;
+      c.mcpServers["bouncer-gates"] = MCP_SERVER;
       writeJson(cursorPath, c);
-      out.push("  .cursor/mcp.json: added the bouncer MCP server");
+      out.push("  .cursor/mcp.json: added the bouncer-gates MCP server");
     }
   } else if (cursor) {
     out.push("  .cursor/ not found, so no Cursor config was written. Create the directory and rerun to add it.");
@@ -143,16 +143,16 @@ export function initAgents(root, { cursor = true } = {}) {
   settings.hooks ??= {};
   settings.hooks.PostToolUse ??= [];
   const has = settings.hooks.PostToolUse.some((h) =>
-    (h.hooks ?? []).some((x) => typeof x.command === "string" && x.command.includes("bouncer"))
+    (h.hooks ?? []).some((x) => typeof x.command === "string" && x.command.includes("bouncer-gates"))
   );
-  if (has) out.push("  .claude/settings.json already runs bouncer after edits, left as is");
+  if (has) out.push("  .claude/settings.json already runs bouncer-gates after edits, left as is");
   else {
     settings.hooks.PostToolUse.push({
       matcher: "Edit|Write|MultiEdit|NotebookEdit",
       hooks: [{ type: "command", command: HOOK_COMMAND, timeout: 30 }],
     });
     writeJson(settingsPath, settings);
-    out.push("  .claude/settings.json: bouncer now runs after every Edit and Write, and blocking findings go back to the model");
+    out.push("  .claude/settings.json: bouncer-gates now runs after every Edit and Write, and blocking findings go back to the model");
   }
 
   out.push(

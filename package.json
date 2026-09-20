@@ -1,20 +1,20 @@
 {
   "name": "bouncer-gates",
-  "version": "0.4.1",
-  "mcpName": "io.github.ajeermahmood/bouncer",
+  "version": "0.5.0",
+  "mcpName": "io.github.ajeermahmood/bouncer-gates",
   "description": "CI gates that let anyone contribute to a codebase without being able to break it.",
   "type": "module",
   "license": "MIT",
   "author": "Ajeer Mohammed",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ajeermahmood/bouncer"
+    "url": "https://github.com/ajeermahmood/bouncer-gates"
   },
   "engines": {
     "node": ">=20"
   },
   "bin": {
-    "bouncer": "./bin/bouncer.mjs"
+    "bouncer-gates": "./bin/bouncer-gates.mjs"
   },
   "files": [
     "bin",
@@ -23,9 +23,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node bin/bouncer.mjs",
-    "check:changed": "node bin/bouncer.mjs --changed",
-    "baseline": "node bin/bouncer.mjs --baseline-write",
+    "check": "node bin/bouncer-gates.mjs",
+    "check:changed": "node bin/bouncer-gates.mjs --changed",
+    "baseline": "node bin/bouncer-gates.mjs --baseline-write",
     "bench": "node tools/bench.mjs",
     "stats": "node tools/stats.mjs",
     "test": "vitest run",
@@ -60,8 +60,8 @@
     "cursor",
     "ai-agents"
   ],
-  "homepage": "https://bouncer.ajeermdk001.workers.dev",
+  "homepage": "https://bouncer-gates.ajeermdk001.workers.dev",
   "bugs": {
-    "url": "https://github.com/ajeermahmood/bouncer/issues"
+    "url": "https://github.com/ajeermahmood/bouncer-gates/issues"
   }
 }

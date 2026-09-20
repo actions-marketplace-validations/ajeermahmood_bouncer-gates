@@ -5,7 +5,7 @@
  * findings. It does not read the filesystem, shell out to git, or print
  * anything. That constraint is the whole architecture:
  *
- *   - `bin/bouncer.mjs` reads files from disk and runs the same functions in CI
+ *   - `bin/bouncer-gates.mjs` reads files from disk and runs the same functions in CI
  *   - `functions/api/scan.js` runs them inside a Cloudflare Worker, where there
  *     IS no filesystem, so the playground on the site executes the real gates
  *     rather than a reimplementation that can drift from them
@@ -62,9 +62,9 @@ export function lines(file) {
  * week it blocks something legitimate. The rule is that the acknowledgement must
  * carry a REASON, on the offending line or the line above it:
  *
- *     const rows = await db.raw(sql); // bouncer-ok(scope): admin report, all tenants
+ *     const rows = await db.raw(sql); // bouncer-gates-ok(scope): admin report, all tenants
  *
- * A bare `bouncer-ok` with no reason does not count. That is what keeps this from
+ * A bare `bouncer-gates-ok` with no reason does not count. That is what keeps this from
  * decaying into a blanket ignore comment.
  *
  * The regex is cached per gate name. It used to be rebuilt on every line of every
@@ -78,13 +78,13 @@ export function acknowledged(allLines, lineIndex, gateName) {
   // indexOf on a short string is far cheaper than running a regex.
   const here = allLines[lineIndex];
   const above = lineIndex > 0 ? allLines[lineIndex - 1] : "";
-  const hasHere = here !== undefined && here.indexOf("bouncer-ok") !== -1;
-  const hasAbove = above !== undefined && above.indexOf("bouncer-ok") !== -1;
+  const hasHere = here !== undefined && here.indexOf("bouncer-gates-ok") !== -1;
+  const hasAbove = above !== undefined && above.indexOf("bouncer-gates-ok") !== -1;
   if (!hasHere && !hasAbove) return false;
 
   let re = ACK_CACHE.get(gateName);
   if (!re) {
-    re = new RegExp("bouncer-ok\\(" + escapeRe(gateName) + "\\)\\s*:\\s*\\S+");
+    re = new RegExp("bouncer-gates-ok\\(" + escapeRe(gateName) + "\\)\\s*:\\s*\\S+");
     ACK_CACHE.set(gateName, re);
   }
   return (hasHere && re.test(here)) || (hasAbove && re.test(above));

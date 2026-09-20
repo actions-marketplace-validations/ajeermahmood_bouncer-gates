@@ -5,12 +5,12 @@ The hard part of a tool like this is not the first run. It is the second month.
 ## Day one, in three commands
 
 ```bash
-npx bouncer-gates --init             # writes bouncer.config.json; reads your Prisma schema if there is one
+npx bouncer-gates --init             # writes bouncer-gates.config.json; reads your Prisma schema if there is one
 npx bouncer-gates                    # see what it finds
 npx bouncer-gates --baseline-write   # if there is existing debt, record it so only new problems block
 ```
 
-Commit `bouncer.config.json` and, if you wrote one, `bouncer.baseline.json`.
+Commit `bouncer-gates.config.json` and, if you wrote one, `bouncer-gates.baseline.json`.
 Then add the workflow step from the README. The rest of this page is about
 what happens after that.
 
@@ -32,7 +32,7 @@ so the realistic options are:
 
 ```bash
 npx bouncer-gates --baseline-write
-git add bouncer.baseline.json && git commit -m "Baseline existing findings"
+git add bouncer-gates.baseline.json && git commit -m "Baseline existing findings"
 ```
 
 That writes what is already wrong. Those findings stop blocking. Anything **new**
@@ -52,7 +52,7 @@ in a pull request that had nothing to do with any of them. The author has no ide
 why, cannot fix them, and the team's conclusion is that the tool is broken. It is
 switched off that week.
 
-Bouncer fingerprints on **rule, path, and the normalised text of the offending
+bouncer-gates fingerprints on **rule, path, and the normalised text of the offending
 line**. So:
 
 | What happens | Effect |
@@ -87,7 +87,7 @@ diff is a thing to ask about.
 
 ## Shrinking it
 
-Fix a finding and the entry stops matching. Bouncer says so:
+Fix a finding and the entry stops matching. bouncer-gates says so:
 
 ```
 2 baseline entries are no longer found. Run --baseline-write to shrink the file.

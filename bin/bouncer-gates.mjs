@@ -20,15 +20,15 @@ import { prismaTenantModels, detectTenantColumn, repoUrlFromRemote } from "../ga
 import { runGates, toJson, RunnerError, VERSION, git, read } from "./lib/run.mjs";
 import { recordUse, NOTICE } from "./lib/telemetry.mjs";
 
-const HELP = `bouncer ${VERSION}
+const HELP = `bouncer-gates ${VERSION}
 CI gates that let anyone, or any agent, contribute without being able to break things.
 
-  bouncer                          run every gate over the whole repository
-  bouncer --init                   write a starter bouncer.config.json
-  bouncer --init-agents            wire Bouncer into Claude Code and Cursor for this repo
-  bouncer --changed                only files that differ from the base ref
-  bouncer --only scope,money       run named gates
-  bouncer --explain scope          what a gate checks and how to acknowledge it
+  bouncer-gates                          run every gate over the whole repository
+  bouncer-gates --init                   write a starter bouncer-gates.config.json
+  bouncer-gates --init-agents            wire bouncer-gates into Claude Code and Cursor for this repo
+  bouncer-gates --changed                only files that differ from the base ref
+  bouncer-gates --only scope,money       run named gates
+  bouncer-gates --explain scope          what a gate checks and how to acknowledge it
 
 Options
   --base <ref>       what "changed" and "new" are measured against (default origin/main)
@@ -67,7 +67,7 @@ const KNOWN_FLAGS = new Set([
 const KNOWN_VALUES = new Set(["base", "only", "root", "explain"]);
 
 function fail(msg) {
-  process.stderr.write(`bouncer: ${msg}\n`);
+  process.stderr.write(`bouncer-gates: ${msg}\n`);
   process.exit(2);
 }
 
@@ -153,7 +153,7 @@ if (flag("mcp")) {
   // Run by hand with nothing piped in, this would sit waiting for stdin
   // forever and look hung. Say what it expects instead.
   if (process.stdin.isTTY) {
-    fail("--hook reads a hook event as JSON on stdin, for example: echo '{\"file_path\":\"src/a.ts\"}' | bouncer --hook");
+    fail("--hook reads a hook event as JSON on stdin, for example: echo '{\"file_path\":\"src/a.ts\"}' | bouncer-gates --hook");
   }
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
@@ -167,7 +167,7 @@ if (flag("mcp")) {
 } else if (flag("init-agents")) {
   const { initAgents } = await import("./lib/agents.mjs");
   try {
-    process.stdout.write("Wired Bouncer into the agentic editors for this repository\n\n" + initAgents(ROOT).join("\n"));
+    process.stdout.write("Wired bouncer-gates into the agentic editors for this repository\n\n" + initAgents(ROOT).join("\n"));
   } catch (e) {
     if (e instanceof RunnerError) fail(e.message);
     throw e;
@@ -191,7 +191,7 @@ function explain() {
   process.stdout.write(`\n${gate.title}  (${gate.name})\n\n${wrap(gate.summary)}\n`);
   process.stdout.write(
     `\nAcknowledge a deliberate case on the line, or the line above it:\n\n` +
-      `    // bouncer-ok(${gate.name}): why this is fine here\n\n` +
+      `    // bouncer-gates-ok(${gate.name}): why this is fine here\n\n` +
       `The reason is required; a bare marker suppresses nothing.\n`
   );
   process.exit(0);
@@ -208,9 +208,9 @@ function explain() {
  * output saying exactly what that means.
  */
 function init() {
-  const target = join(ROOT, "bouncer.config.json");
+  const target = join(ROOT, "bouncer-gates.config.json");
   if (existsSync(target)) {
-    fail("bouncer.config.json already exists. Edit it, or delete it and run --init again.");
+    fail("bouncer-gates.config.json already exists. Edit it, or delete it and run --init again.");
   }
   const tracked = git(ROOT, ["ls-files"])
     .split("\n")
@@ -246,7 +246,7 @@ function init() {
 
   writeFileSync(target, JSON.stringify(config, null, 2) + "\n");
 
-  const lines = ["Wrote bouncer.config.json", ""];
+  const lines = ["Wrote bouncer-gates.config.json", ""];
   if (found.length) {
     const names = [...new Set(found.map((m) => m.schemaPath))].join(", ");
     lines.push(
@@ -347,9 +347,9 @@ function sarif(findings) {
       {
         tool: {
           driver: {
-            name: "Bouncer",
+            name: "bouncer-gates",
             version: VERSION,
-            informationUri: "https://github.com/ajeermahmood/bouncer",
+            informationUri: "https://github.com/ajeermahmood/bouncer-gates",
             rules,
           },
         },
@@ -365,7 +365,7 @@ function sarif(findings) {
               },
             },
           ],
-          partialFingerprints: { bouncerFingerprint: f.fp },
+          partialFingerprints: { bouncerGatesFingerprint: f.fp },
         })),
       },
     ],
@@ -385,7 +385,7 @@ function report(run) {
   if (!QUIET) {
     const scope = ctx.changedCount === null ? "" : " (changed only)";
     process.stdout.write(
-      `\n${bold("bouncer")} ${dim(
+      `\n${bold("bouncer-gates")} ${dim(
         `${ctx.source.length} source, ${ctx.markdown.length} markdown, ` +
           `${ctx.addedSql.length} new migrations${scope}`
       )}\n`
@@ -398,7 +398,7 @@ function report(run) {
     }
     if (grandfathered.length) {
       process.stdout.write(
-        dim(`        ${grandfathered.length} grandfathered by bouncer.baseline.json\n`)
+        dim(`        ${grandfathered.length} grandfathered by bouncer-gates.baseline.json\n`)
       );
     }
     // Printed in yellow rather than dim, because unlike an exclusion this was not
@@ -459,7 +459,7 @@ function report(run) {
       `\n${red(`${errorCount} blocking ${errorCount === 1 ? "finding" : "findings"}`)}` +
         `${warns ? dim(`, ${warns} warning${warns === 1 ? "" : "s"}`) : ""} ${dim(`in ${elapsed}ms`)}\n` +
         dim(
-          `Each one is either a real problem, or a place to write // bouncer-ok(<gate>): <why>.\n` +
+          `Each one is either a real problem, or a place to write // bouncer-gates-ok(<gate>): <why>.\n` +
             `The reason is required. That is what stops the escape hatch becoming a blanket ignore.\n`
         )
     );

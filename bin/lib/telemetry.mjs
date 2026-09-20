@@ -5,7 +5,7 @@
  *
  *   { id, version, runtime, os, node }
  *
- *   id        a random string generated once and stored in ~/.bouncer/id. It is
+ *   id        a random string generated once and stored in ~/.bouncer-gates/id. It is
  *             not derived from anything about the machine or the person.
  *   version   this package's version
  *   runtime   "cli", "mcp", "hook" or "ci"
@@ -27,8 +27,59 @@ import { readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
+import { request as httpsRequest } from "node:https";
 
-export const ENDPOINT = "https://bouncer.ajeermdk001.workers.dev/api/ping";
+/**
+ * POST the payload with keep-alive off, rather than with fetch.
+ *
+ * This looks like a downgrade and is not. Node's fetch is undici, which holds
+ * the socket open for reuse after the response. The runner calls process.exit()
+ * immediately afterwards, and tearing that pooled handle down while it is still
+ * closing trips a libuv assertion on Windows:
+ *
+ *   Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\win\async.c
+ *
+ * The process then exits 127 with that printed after a perfectly good scan.
+ * Draining the response body does not help; the pooled socket is the problem.
+ *
+ * It only ever showed on a first run, because the daily throttle means later
+ * runs send nothing. So the one run that printed it was the one where somebody
+ * had just installed the tool and was deciding whether to trust it.
+ *
+ * `agent: false` gives this request its own socket and closes it with the
+ * response, so there is nothing left for exit to race.
+ */
+function postJson(endpoint, json, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let req;
+    try {
+      req = httpsRequest(
+        endpoint,
+        {
+          method: "POST",
+          agent: false,
+          headers: {
+            "content-type": "application/json",
+            "content-length": Buffer.byteLength(json),
+          },
+        },
+        (res) => {
+          res.resume(); // discard the body; nothing here reads it
+          res.on("end", resolve);
+          res.on("error", reject);
+        }
+      );
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    req.setTimeout(timeoutMs, () => req.destroy(new Error("telemetry timeout")));
+    req.on("error", reject);
+    req.end(json);
+  });
+}
+
+export const ENDPOINT = "https://bouncer-gates.ajeermdk001.workers.dev/api/ping";
 const DAY = 24 * 60 * 60 * 1000;
 
 export function telemetryDisabled(env = process.env) {
@@ -42,7 +93,7 @@ export function isCi(env = process.env) {
 }
 
 function stateDir(env = process.env) {
-  return env.BOUNCER_HOME || join(homedir(), ".bouncer");
+  return env.BOUNCER_HOME || join(homedir(), ".bouncer-gates");
 }
 
 /**
@@ -79,9 +130,9 @@ function markPinged(dir, runtime) {
 }
 
 export const NOTICE =
-  "bouncer sends one anonymous ping a day (a random id, version, runtime, OS, Node major) " +
+  "bouncer-gates sends one anonymous ping a day (a random id, version, runtime, OS, Node major) " +
   "so the project knows it is used. Nothing about your code is ever sent. " +
-  "Set BOUNCER_TELEMETRY=0 to turn it off. Details: https://github.com/ajeermahmood/bouncer/blob/main/docs/telemetry.md\n";
+  "Set BOUNCER_TELEMETRY=0 to turn it off. Details: https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/telemetry.md\n";
 
 /**
  * Record a use. Fire and forget.
@@ -92,8 +143,7 @@ export const NOTICE =
  */
 export async function recordUse(runtime, version, deps = {}) {
   const env = deps.env ?? process.env;
-  const doFetch = deps.fetch ?? globalThis.fetch;
-  if (telemetryDisabled(env) || typeof doFetch !== "function") return { sent: false, notice: false };
+  if (telemetryDisabled(env)) return { sent: false, notice: false };
 
   const dir = stateDir(env);
   // A CI runner has no persistent home, so every job would look like a new
@@ -117,16 +167,22 @@ export async function recordUse(runtime, version, deps = {}) {
   // notices into a second of delay everybody notices.
   if (!ci) markPinged(dir, runtime);
 
+  const endpoint = deps.endpoint ?? ENDPOINT;
+  const timeoutMs = deps.timeoutMs ?? 1000;
+  const json = JSON.stringify(payload);
+
   try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), deps.timeoutMs ?? 1000);
-    await doFetch(deps.endpoint ?? ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: ctl.signal,
-    });
-    clearTimeout(t);
+    // Tests inject a fetch-shaped function; real runs go through postJson,
+    // which is the one that does not leave a pooled socket behind.
+    if (deps.fetch) {
+      await deps.fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: json,
+      });
+    } else {
+      await postJson(endpoint, json, timeoutMs);
+    }
   } catch {
     return { sent: false, notice: created, payload };
   }

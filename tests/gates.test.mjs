@@ -115,12 +115,12 @@ describe("secrets", () => {
 
   it("honours an acknowledgement that carries a reason", () => {
     const text =
-      'const db = "postgres://u:realpw12345@h.acme-corp.io/d"; // bouncer-ok(secrets): documented sample';
+      'const db = "postgres://u:realpw12345@h.acme-corp.io/d"; // bouncer-gates-ok(secrets): documented sample';
     expect(secrets.scan(at("t.ts", text))).toHaveLength(0);
   });
 
   it("ignores a bare acknowledgement with no reason", () => {
-    const text = 'const db = "postgres://u:realpw12345@h.acme-corp.io/d"; // bouncer-ok(secrets):';
+    const text = 'const db = "postgres://u:realpw12345@h.acme-corp.io/d"; // bouncer-gates-ok(secrets):';
     expect(secrets.scan(at("t.ts", text))).toHaveLength(1);
   });
 
@@ -329,7 +329,7 @@ describe("migration-safety", () => {
 
   it("respects a file-level acknowledgement", () => {
     const text = [
-      "-- bouncer-ok(migration): add_referrals never reached production",
+      "-- bouncer-gates-ok(migration): add_referrals never reached production",
       "DROP TABLE referrals;",
     ].join("\n");
     expect(migration.scan(at("009.sql", text))).toHaveLength(0);

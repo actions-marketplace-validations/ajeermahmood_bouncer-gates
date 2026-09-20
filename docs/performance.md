@@ -43,13 +43,13 @@ None of them is clever. All three were invisible until measured.
 
 ```js
 // before: inside the per-line loop, for every gate
-const pattern = new RegExp("bouncer-ok\\(" + gateName + "\\)\\s*:\\s*\\S+");
+const pattern = new RegExp("bouncer-gates-ok\\(" + gateName + "\\)\\s*:\\s*\\S+");
 ```
 
 On 947 files with three line-based gates that is roughly a million `RegExp`
-constructions for a repository where the string `bouncer-ok` appears zero times.
+constructions for a repository where the string `bouncer-gates-ok` appears zero times.
 
-Now it is cached per gate name, behind a cheap `indexOf("bouncer-ok")` reject that
+Now it is cached per gate name, behind a cheap `indexOf("bouncer-gates-ok")` reject that
 skips the regex entirely for the ~99.99% of lines that cannot contain one.
 
 ### 2. The scope gate built an alias matcher inside the inner loop

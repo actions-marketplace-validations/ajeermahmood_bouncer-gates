@@ -44,8 +44,8 @@ rule logic, and all four are live so you can check rather than take my word:
 
 | Runtime | Where | Check it |
 |---|---|---|
-| Node CLI | [`bin/bouncer.mjs`](../bin/bouncer.mjs) | `npx bouncer-gates --version` |
-| Cloudflare Worker | [`worker/index.js`](../worker/index.js) | [POST /api/scan](https://bouncer.ajeermdk001.workers.dev) |
+| Node CLI | [`bin/bouncer-gates.mjs`](../bin/bouncer-gates.mjs) | `npx bouncer-gates --version` |
+| Cloudflare Worker | [`worker/index.js`](../worker/index.js) | [POST /api/scan](https://bouncer-gates.ajeermdk001.workers.dev) |
 | Node on Railway | [`server/index.mjs`](../server/index.mjs) | [GET /health](https://bouncer-production-9470.up.railway.app/health) |
 | Browser | [`Playground.tsx`](../src/components/Playground.tsx) | the playground, offline |
 
@@ -60,11 +60,11 @@ people keep and one that gets switched off in a month.
 Every gate honours a comment on the offending line or the line above it:
 
 ```js
-// bouncer-ok(scope): finance dashboard, spans all tenants by design
+// bouncer-gates-ok(scope): finance dashboard, spans all tenants by design
 return db.raw.order.aggregate({ _sum: { totalMinor: true } });
 ```
 
-**The reason is required.** A bare `bouncer-ok(scope):` suppresses nothing.
+**The reason is required.** A bare `bouncer-gates-ok(scope):` suppresses nothing.
 
 That one requirement is the whole design. The hatch has to be easy, or people
 route around the gate entirely and you lose the signal. It has to be impossible to

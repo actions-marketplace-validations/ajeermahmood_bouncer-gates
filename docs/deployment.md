@@ -6,7 +6,7 @@ there is a single implementation of every rule.
 
 | Target | Serves | Live | Config |
 |---|---|---|---|
-| Cloudflare Workers | the site and `/api/scan` | [bouncer.ajeermdk001.workers.dev](https://bouncer.ajeermdk001.workers.dev) | `wrangler.toml`, `worker/index.js` |
+| Cloudflare Workers | the site and `/api/scan` | [bouncer-gates.ajeermdk001.workers.dev](https://bouncer-gates.ajeermdk001.workers.dev) | `wrangler.toml`, `worker/index.js` |
 | Railway | the hosted API on its own | [bouncer-production-9470.up.railway.app](https://bouncer-production-9470.up.railway.app/health) | `railway.json`, `server/index.mjs` |
 | npm | the CLI | [`bouncer-gates`](https://www.npmjs.com/package/bouncer-gates) | `package.json` |
 
@@ -107,9 +107,9 @@ npm publish --access public
 git push --follow-tags
 ```
 
-The package is **`bouncer-gates`**. The plain `bouncer` name was already taken on
+The package is **`bouncer-gates`**. The plain `bouncer-gates` name was already taken on
 npm by an unrelated package, which is worth knowing because an earlier README told
-people to run `npx bouncer` and that would have executed a stranger's code.
+people to run `npx bouncer-gates` and that would have executed a stranger's code.
 
 `files` in `package.json` ships `bin`, `gates`, the README and the licence only.
 The site, the tests and the tooling are not published.

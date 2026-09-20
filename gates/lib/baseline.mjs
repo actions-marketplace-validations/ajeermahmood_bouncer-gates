@@ -50,7 +50,7 @@ export function createBaseline(fingerprinted) {
     note:
       "Findings that existed when these gates were switched on. They do not block. " +
       "Anything new does. Delete an entry once the finding is genuinely fixed; " +
-      "`bouncer --baseline-write` will not re-add it.",
+      "`bouncer-gates --baseline-write` will not re-add it.",
     count: Object.keys(entries).length,
     entries,
   };

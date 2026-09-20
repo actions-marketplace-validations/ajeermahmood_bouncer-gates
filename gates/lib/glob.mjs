@@ -1,5 +1,5 @@
 /**
- * The glob dialect used by `exclude` in bouncer.config.json.
+ * The glob dialect used by `exclude` in bouncer-gates.config.json.
  *
  * Deliberately tiny and deliberately single-pass: a double star spans
  * directories, a single star stops at a slash, everything else is literal. No
@@ -10,7 +10,7 @@
  * star not yet handled, and the usual fix is placeholder tokens that then have to
  * be impossible to collide with. An earlier version used NUL bytes as those
  * tokens, which worked and quietly made the runner read as a binary file to grep
- * and to Bouncer's own file reader. One pass has no ordering to get wrong and no
+ * and to bouncer-gates's own file reader. One pass has no ordering to get wrong and no
  * tokens to choose badly.
  *
  * It lives here rather than in the runner because the runner executes the whole

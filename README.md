@@ -1,4 +1,4 @@
-# Bouncer
+# bouncer-gates
 
 **Five checks that stop the expensive mistakes before they merge, whether a
 person or an agent wrote the code.**
@@ -9,7 +9,7 @@ files which no longer exist.
 
 Agents write most new code now, and they make exactly these mistakes: a key
 pasted in to make a test pass, a query with no tenant filter because the prompt
-never mentioned tenants. Bouncer runs inside Claude Code and Cursor, so the
+never mentioned tenants. bouncer-gates runs inside Claude Code and Cursor, so the
 agent hears about it in the same turn it wrote it, and again in CI so nothing
 gets through.
 
@@ -19,7 +19,7 @@ Try it on any repository in ten seconds:
 npx bouncer-gates
 ```
 
-Or paste some code into the [playground](https://bouncer.ajeermdk001.workers.dev)
+Or paste some code into the [playground](https://bouncer-gates.ajeermdk001.workers.dev)
 and watch the same checks run on it.
 
 ---
@@ -27,7 +27,7 @@ and watch the same checks run on it.
 ## Quick start
 
 ```bash
-npx bouncer-gates --init          # writes bouncer.config.json, reads your Prisma schema if you have one
+npx bouncer-gates --init          # writes bouncer-gates.config.json, reads your Prisma schema if you have one
 npx bouncer-gates --init-agents   # wires the same checks into Claude Code and Cursor for this repo
 npx bouncer-gates                 # runs every check and prints what it found
 ```
@@ -39,9 +39,9 @@ steps:
   - uses: actions/checkout@v4
     with:
       fetch-depth: 0             # needed so the migration check can see what is new
-  - uses: ajeermahmood/bouncer@v0
+  - uses: ajeermahmood/bouncer-gates@v0
     with:
-      version: "0.4.1"
+      version: "0.5.0"
 ```
 
 That is the whole setup. Everything below is detail.
@@ -61,7 +61,7 @@ x src/orders.ts:12  scope/unscoped-query
 
 Any other MCP client can run `npx -y bouncer-gates --mcp`, and any post-edit
 hook can pipe its event to `npx -y bouncer-gates --hook`.
-[How it works, and what it will not do](https://github.com/ajeermahmood/bouncer/blob/main/docs/agents.md).
+[How it works, and what it will not do](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/agents.md).
 
 ## What it checks
 
@@ -74,7 +74,7 @@ hook can pipe its event to `npx -y bouncer-gates --hook`.
 | **doc-links** | Markdown links to files that do not exist | `[setup](docs/setup.md)` after the file moved |
 
 Each check exists because of a real, expensive bug. None is a style opinion.
-The [gate reference](https://github.com/ajeermahmood/bouncer/blob/main/docs/gates.md)
+The [gate reference](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/gates.md)
 explains every rule with a bad example and a fixed one.
 
 ## When it finds something
@@ -95,7 +95,7 @@ You have three options, in this order:
 2. **Explain why it is fine.** Put a comment on the line, or the line above it,
    with a reason. The reason is required; a bare marker does nothing.
    ```js
-   // bouncer-ok(scope): nightly revenue report spans every tenant by design
+   // bouncer-gates-ok(scope): nightly revenue report spans every tenant by design
    const all = await prisma.order.findMany();
    ```
 3. **Record existing problems so only new ones block.** On a codebase that
@@ -108,7 +108,7 @@ You have three options, in this order:
 
 ## Configuration
 
-`bouncer --init` writes this for you. Edit it by hand any time.
+`bouncer-gates --init` writes this for you. Edit it by hand any time.
 
 ```json
 {
@@ -176,7 +176,7 @@ Honest limits, so nobody trusts it further than it deserves:
   check cannot follow.
 
 Every rule's blind spots are listed in the
-[gate reference](https://github.com/ajeermahmood/bouncer/blob/main/docs/gates.md).
+[gate reference](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/gates.md).
 
 ## Words used here
 
@@ -185,31 +185,31 @@ Every rule's blind spots are listed in the
 - **Blocking**: a finding that makes the run exit `1`. Warnings do not.
 - **Baseline**: the file that records findings you have chosen to live with for
   now, so only new ones block.
-- **Acknowledge** or **excuse**: the `bouncer-ok` comment that says a specific
+- **Acknowledge** or **excuse**: the `bouncer-gates-ok` comment that says a specific
   line is fine, and why.
 
 ## Telemetry
 
 One anonymous ping a day: a random id, the version, the runtime, the OS and the
 Node major. Nothing about your code, ever. `BOUNCER_TELEMETRY=0` turns it off.
-[Everything it sends](https://github.com/ajeermahmood/bouncer/blob/main/docs/telemetry.md).
+[Everything it sends](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/telemetry.md).
 
 ## More
 
-- [Inside the editor](https://github.com/ajeermahmood/bouncer/blob/main/docs/agents.md): the MCP server and the hook, what the agent sees, other editors
-- [Gate reference](https://github.com/ajeermahmood/bouncer/blob/main/docs/gates.md): every rule, a bad and a good example, what it misses
-- [Rolling it out on an existing codebase](https://github.com/ajeermahmood/bouncer/blob/main/docs/adoption.md)
-- [Design notes](https://github.com/ajeermahmood/bouncer/blob/main/docs/design-notes.md): why it never fails open, why findings never quote the secret, the false-positive story, and the speed work
-- [Architecture](https://github.com/ajeermahmood/bouncer/blob/main/docs/architecture.md): gates are pure functions, which is why the same code runs in the CLI, in a Cloudflare Worker and in your browser
-- [Deployment](https://github.com/ajeermahmood/bouncer/blob/main/docs/deployment.md): the playground, the API and npm
-- [Contributing](https://github.com/ajeermahmood/bouncer/blob/main/CONTRIBUTING.md): adding a gate, and how to decide whether something should be one
+- [Inside the editor](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/agents.md): the MCP server and the hook, what the agent sees, other editors
+- [Gate reference](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/gates.md): every rule, a bad and a good example, what it misses
+- [Rolling it out on an existing codebase](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/adoption.md)
+- [Design notes](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/design-notes.md): why it never fails open, why findings never quote the secret, the false-positive story, and the speed work
+- [Architecture](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/architecture.md): gates are pure functions, which is why the same code runs in the CLI, in a Cloudflare Worker and in your browser
+- [Deployment](https://github.com/ajeermahmood/bouncer-gates/blob/main/docs/deployment.md): the playground, the API and npm
+- [Contributing](https://github.com/ajeermahmood/bouncer-gates/blob/main/CONTRIBUTING.md): adding a gate, and how to decide whether something should be one
 
 ## Development
 
 ```bash
 npm install
 npm test                        # unit tests
-npm run check                   # bouncer on itself
+npm run check                   # bouncer-gates on itself
 npm run bench -- ../some-repo   # measure against a real codebase
 npm run dev                     # the playground site
 ```

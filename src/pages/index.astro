@@ -8,7 +8,7 @@ import { GATES } from "../../gates/index.mjs";
 // describe a gate that was deleted.
 const gates = GATES.map((g) => ({ name: g.name, title: g.title, summary: g.summary }));
 
-const title = "Bouncer";
+const title = "bouncer-gates";
 const description =
   "CI gates that let anyone on the team contribute to a codebase without being able to break it.";
 ---
@@ -22,7 +22,7 @@ const description =
         Let nothing dangerous through.
       </h1>
       <p class="lede">
-        Bouncer is a small set of CI gates. They sit at the door of your main branch and
+        bouncer-gates is a small set of CI gates. They sit at the door of your main branch and
         check the handful of mistakes that are cheap to catch now and expensive to find
         later. Everyone passes through the same ones: senior engineers, the person in
         marketing who edited a page, and the AI agent that opened the pull request at
@@ -30,7 +30,7 @@ const description =
       </p>
       <div class="cta">
         <a class="btn" href="#try">Try it below</a>
-        <a class="btn btnGhost" href="https://github.com/ajeermahmood/bouncer">Source on GitHub</a>
+        <a class="btn btnGhost" href="https://github.com/ajeermahmood/bouncer-gates">Source on GitHub</a>
       </div>
     </div>
   </header>
@@ -199,9 +199,9 @@ const description =
       <div class="rule">
         <h3>The escape hatch requires a reason.</h3>
         <p>Every gate honours a comment on the line, or the line above it:</p>
-        <pre class="scroll-x"><code>// bouncer-ok(scope): finance dashboard, spans all tenants by design</code></pre>
+        <pre class="scroll-x"><code>// bouncer-gates-ok(scope): finance dashboard, spans all tenants by design</code></pre>
         <p>
-          A bare <code>bouncer-ok(scope):</code> with nothing after it suppresses nothing.
+          A bare <code>bouncer-gates-ok(scope):</code> with nothing after it suppresses nothing.
           That single requirement is what stops the hatch decaying into a blanket ignore,
           and it puts the justification in the file, where the next reader finds it
           instead of in a pull request nobody will open again.
@@ -257,7 +257,7 @@ npx bouncer-gates --explain scope        # what a gate checks, and how to excuse
 npx bouncer-gates --baseline-write       # grandfather what is already wrong
 npx bouncer-gates --sarif                # GitHub code scanning</code></pre>
       <p>
-        Configure the tenant-scoped models in <code>bouncer.config.json</code>, add one
+        Configure the tenant-scoped models in <code>bouncer-gates.config.json</code>, add one
         step to your workflow, and set <code>fetch-depth: 0</code> so the migration gate
         can tell which files are new. That last line is the difference between a real
         check and one that quietly reports skipped forever.
@@ -279,7 +279,7 @@ npx bouncer-gates --sarif                # GitHub code scanning</code></pre>
         one meant a customer seeing another customer's orders.
       </p>
       <p class="dim">
-        MIT licensed. <a href="https://github.com/ajeermahmood/bouncer">Source</a>.
+        MIT licensed. <a href="https://github.com/ajeermahmood/bouncer-gates">Source</a>.
         This site is Astro on Cloudflare Workers, and its own pull requests go through the
         gates it describes.
       </p>

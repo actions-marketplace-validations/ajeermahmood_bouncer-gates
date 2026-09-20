@@ -12,7 +12,7 @@ Excusing a line is the same everywhere: a comment on the line or the line above
 it, with a reason. A bare marker does nothing.
 
 ```js
-// bouncer-ok(<gate>): why this is fine here
+// bouncer-gates-ok(<gate>): why this is fine here
 ```
 
 ---
@@ -103,7 +103,7 @@ the shape clean fixed it.
 ### Excusing a case
 
 ```js
-const url = "postgres://u:p@db.acme-corp.io/x"; // bouncer-ok(secrets): documented sample, credentials revoked
+const url = "postgres://u:p@db.acme-corp.io/x"; // bouncer-gates-ok(secrets): documented sample, credentials revoked
 ```
 
 ---
@@ -146,7 +146,7 @@ const rows = await prisma.order.findMany({ where: { tenantId, status: "paid" } }
 const rows = await prisma.order.findMany({ where: tenantWhere(req) });
 ```
 
-`bouncer --init` fills in `models` and `tables` from every model in your Prisma
+`bouncer-gates --init` fills in `models` and `tables` from every model in your Prisma
 schema that has a `tenantId` field, and sets `clients` to `["prisma"]`.
 
 ### Mode 2: you have a scoped client
@@ -193,7 +193,7 @@ With no models and no tables configured the gate reports **skipped**, not passed
   gets reported; excuse the line, or rename the helper.
 - **A tenant-owned model nobody listed.** Generate the list from the schema with
   `--init`, and re-run it when the schema changes.
-- **Whether a `bouncer-ok(scope)` reason is still true** months later.
+- **Whether a `bouncer-gates-ok(scope)` reason is still true** months later.
 
 The raw-SQL check reads one statement, bounded by paren balance and capped at 40
 lines. It does not read forward into the next statement: an earlier version did,
@@ -353,7 +353,7 @@ printed the reassuring one when it meant the other. Locally, if you did not pass
 Per file, because a migration is one unit of intent:
 
 ```sql
--- bouncer-ok(migration): add_referrals never reached production
+-- bouncer-gates-ok(migration): add_referrals never reached production
 DROP TABLE referrals;
 ```
 

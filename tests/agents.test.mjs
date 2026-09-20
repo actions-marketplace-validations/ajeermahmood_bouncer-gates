@@ -22,14 +22,14 @@ const git = (...args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
 
 beforeAll(() => {
-  root = mkdtempSync(join(tmpdir(), "bouncer-agents-"));
+  root = mkdtempSync(join(tmpdir(), "bouncer-gates-agents-"));
   git("init", "-q");
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "t");
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src", "clean.ts"), "export const ok = 1;\n");
   writeFileSync(
-    join(root, "bouncer.config.json"),
+    join(root, "bouncer-gates.config.json"),
     JSON.stringify({
       exclude: ["fixtures/**"],
       scope: { models: ["order"], tables: ["orders"], column: "tenantId", clients: ["prisma"] },
@@ -115,7 +115,7 @@ describe("MCP server", () => {
       opts()
     );
     expect(res.result.protocolVersion).toBe("2024-11-05");
-    expect(res.result.serverInfo.name).toBe("bouncer");
+    expect(res.result.serverInfo.name).toBe("bouncer-gates");
     expect(res.result.instructions).toBe(INSTRUCTIONS);
     expect(res.result.capabilities.tools).toBeDefined();
   });
@@ -135,10 +135,10 @@ describe("MCP server", () => {
   it("lists four tools with schemas", () => {
     const res = handleMessage({ jsonrpc: "2.0", id: 2, method: "tools/list" }, opts());
     expect(res.result.tools.map((t) => t.name)).toEqual([
-      "bouncer_scan",
-      "bouncer_scan_snippet",
-      "bouncer_explain",
-      "bouncer_list_gates",
+      "bouncer_gates_scan",
+      "bouncer_gates_scan_snippet",
+      "bouncer_gates_explain",
+      "bouncer_gates_list_gates",
     ]);
     for (const t of res.result.tools) expect(t.inputSchema.type).toBe("object");
   });
@@ -149,30 +149,30 @@ describe("MCP server", () => {
   });
 
   it("scans named paths and returns structured findings", () => {
-    const r = callTool("bouncer_scan", { paths: ["src/new.ts"] }, opts());
+    const r = callTool("bouncer_gates_scan", { paths: ["src/new.ts"] }, opts());
     expect(r.isError).toBe(false);
     expect(r.content[0].text).toContain("secrets/assigned-credential");
     expect(r.structuredContent.results.find((x) => x.gate === "secrets").findings).toHaveLength(1);
   });
 
   it("scans a snippet", () => {
-    const r = callTool("bouncer_scan_snippet", { filename: "x.ts", code: LEAK }, opts());
+    const r = callTool("bouncer_gates_scan_snippet", { filename: "x.ts", code: LEAK }, opts());
     expect(r.content[0].text).toContain("x x.ts:1");
   });
 
   it("explains a gate with the acknowledgement syntax", () => {
-    const r = callTool("bouncer_explain", { gate: "scope" }, opts());
-    expect(r.content[0].text).toContain("bouncer-ok(scope):");
+    const r = callTool("bouncer_gates_explain", { gate: "scope" }, opts());
+    expect(r.content[0].text).toContain("bouncer-gates-ok(scope):");
   });
 
   it("reports a runner failure as an error, never as no findings", () => {
-    const r = callTool("bouncer_scan", { only: ["nope"] }, opts());
+    const r = callTool("bouncer_gates_scan", { only: ["nope"] }, opts());
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain("nothing was checked");
   });
 
   it("reports a wrong tool name as an error", () => {
-    expect(callTool("bouncer_delete_everything", {}, opts()).isError).toBe(true);
+    expect(callTool("bouncer_gates_delete_everything", {}, opts()).isError).toBe(true);
   });
 });
 
@@ -214,9 +214,9 @@ describe("editor hook", () => {
   });
 
   it("exits 2, not 0, when the runner cannot do its job", () => {
-    writeFileSync(join(root, "bouncer.baseline.json"), "{broken");
+    writeFileSync(join(root, "bouncer-gates.baseline.json"), "{broken");
     const r = hook(JSON.stringify({ file_path: "src/new.ts" }), { root });
-    rmSync(join(root, "bouncer.baseline.json"));
+    rmSync(join(root, "bouncer-gates.baseline.json"));
     expect(r.code).toBe(2);
     expect(r.message).toContain("NOT checked");
   });
@@ -224,7 +224,7 @@ describe("editor hook", () => {
 
 describe("--init-agents", () => {
   it("writes the MCP server and the hook, and merges into existing files", () => {
-    const dir = mkdtempSync(join(tmpdir(), "bouncer-init-"));
+    const dir = mkdtempSync(join(tmpdir(), "bouncer-gates-init-"));
     mkdirSync(join(dir, ".claude"));
     mkdirSync(join(dir, ".cursor"));
     writeFileSync(join(dir, ".claude", "settings.json"), JSON.stringify({ permissions: { allow: ["Bash(ls)"] } }));
@@ -232,11 +232,11 @@ describe("--init-agents", () => {
 
     const out = initAgents(dir).join("\n");
     expect(out).toContain(".mcp.json: added");
-    expect(out).toContain(".claude/settings.json: bouncer now runs");
+    expect(out).toContain(".claude/settings.json: bouncer-gates now runs");
 
     const mcp = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf8"));
     expect(mcp.mcpServers.other).toEqual({ command: "x" });
-    expect(mcp.mcpServers.bouncer.args).toContain("--mcp");
+    expect(mcp.mcpServers["bouncer-gates"].args).toContain("--mcp");
     expect(existsSync(join(dir, ".cursor", "mcp.json"))).toBe(true);
 
     const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8"));
@@ -251,7 +251,7 @@ describe("--init-agents", () => {
   });
 
   it("does not create a .cursor directory in a repository that has none", () => {
-    const dir = mkdtempSync(join(tmpdir(), "bouncer-init-"));
+    const dir = mkdtempSync(join(tmpdir(), "bouncer-gates-init-"));
     const out = initAgents(dir).join("\n");
     expect(existsSync(join(dir, ".cursor"))).toBe(false);
     expect(out).toContain(".cursor/ not found");
@@ -259,7 +259,7 @@ describe("--init-agents", () => {
   });
 
   it("refuses to guess at a settings file it cannot parse", () => {
-    const dir = mkdtempSync(join(tmpdir(), "bouncer-init-"));
+    const dir = mkdtempSync(join(tmpdir(), "bouncer-gates-init-"));
     writeFileSync(join(dir, ".mcp.json"), "{broken");
     expect(() => initAgents(dir)).toThrow(RunnerError);
     rmSync(dir, { recursive: true, force: true });
@@ -267,7 +267,7 @@ describe("--init-agents", () => {
 });
 
 describe("telemetry", () => {
-  const home = () => mkdtempSync(join(tmpdir(), "bouncer-home-"));
+  const home = () => mkdtempSync(join(tmpdir(), "bouncer-gates-home-"));
 
   it("is off with BOUNCER_TELEMETRY=0 or DO_NOT_TRACK=1, and sends nothing", async () => {
     expect(telemetryDisabled({ BOUNCER_TELEMETRY: "0" })).toBe(true);
@@ -344,10 +344,10 @@ describe("telemetry", () => {
 });
 
 describe("the real processes", () => {
-  // The unit tests above call the functions. These start `bin/bouncer.mjs`
+  // The unit tests above call the functions. These start `bin/bouncer-gates.mjs`
   // the way an editor would, so the stdio plumbing, the exit codes and the
   // telemetry switch are exercised too.
-  const BIN = join(process.cwd(), "bin", "bouncer.mjs");
+  const BIN = join(process.cwd(), "bin", "bouncer-gates.mjs");
   const env = { ...process.env, BOUNCER_TELEMETRY: "0" };
 
   it("--mcp answers a handshake and a tool call over stdio, then exits on EOF", async () => {
@@ -366,12 +366,12 @@ describe("the real processes", () => {
     const send = (o) => child.stdin.write(JSON.stringify(o) + "\n");
     send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } });
     send({ jsonrpc: "2.0", method: "notifications/initialized" });
-    send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "bouncer_scan", arguments: { paths: ["src/new.ts"] } } });
+    send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "bouncer_gates_scan", arguments: { paths: ["src/new.ts"] } } });
     child.stdin.end();
     const code = await new Promise((r) => child.on("close", r));
     expect(code).toBe(0);
     expect(lines.map((l) => l.id)).toEqual([1, 2]);
-    expect(lines[0].result.serverInfo.name).toBe("bouncer");
+    expect(lines[0].result.serverInfo.name).toBe("bouncer-gates");
     expect(lines[1].result.content[0].text).toContain("secrets/assigned-credential");
   });
 
