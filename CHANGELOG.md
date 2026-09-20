@@ -34,6 +34,15 @@ package and the listing are the same project. The listed launch command is
 `npx bouncer-gates --mcp`, because plain `npx bouncer-gates` runs the CLI once
 and exits rather than speaking MCP.
 
+### Dependencies
+
+Astro 5 to 7 and Vitest 3 to 4, clearing 15 advisories including a critical
+remote code execution through AVIF image optimisation and several stored XSS
+issues. All of them were build-time only: the published package has no
+dependencies at all and ships `bin/`, `gates/`, the README and the licence, so
+no version of this ever shipped vulnerable code to anyone running it. The site
+and the playground are what were exposed.
+
 ### The first run printed a crash after a clean scan
 
 The usage ping used `fetch`, which is undici, which keeps its socket pooled
