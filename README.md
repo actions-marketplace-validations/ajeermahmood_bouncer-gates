@@ -218,6 +218,7 @@ npm run dev                     # the playground site
 
 MIT. Take any of it.
 
-Built by [Ajeer Mohammed](https://ajeer.website). The rules come from running
-checks like these across eight production repositories, on a multi-tenant
-platform where missing one meant a merchant seeing another merchant's orders.
+Built by [Ajeer Mohammed](https://ajeer.website). The rules come from the checks
+that gate a multi-tenant platform where most of the code is written by a coding
+agent, and where missing one meant a merchant seeing another merchant's orders.
+[How that workflow fits together](https://ajeer.website/how-i-work).
